@@ -12,6 +12,9 @@ namespace gemmini{
     #define RS_WIDTH 64
     #define DEFAULT_DIM 16
     #define DIM_WIDTH 8
+
+    constexpr int DRAM_ADDR_WIDTH = 32;
+    constexpr int DRAM_DATA_WIDTH = 64;
     
     // For now use 8-bit ints
     #define INPUT_TYPE_BIT_WIDTH 8
@@ -69,14 +72,15 @@ namespace gemmini{
 
             // Following are memory 
             ExprRef DRAM; // how do i model this lmao
-            std::vector<ExprRef> scratchpad;
-            std::vector<ExprRef> accumulator;
+            ExprRef scratchpad;
+            ExprRef accumulator;
             std::vector<std::vector<PE>> sys_array;
 
             // Following are config states
             ExprRef shift;
             ExprRef A_stride;
             ExprRef scale; 
+            ExprRef stride;
 
             ExprRef activation_func;
             ExprRef A_T;
@@ -96,6 +100,11 @@ namespace gemmini{
             ExprRef unpool_row;
             ExprRef unpool_col;
             // Note: maybe add another ExprRef for mode, but overlap with dataflow? 
+
+            // Preload stuff
+            ExprRef dest_addr;
+            ExprRef dest_row; 
+            ExprRef dest_col;
 
             // Following are input fields for decoding
             ExprRef funct;

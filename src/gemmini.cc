@@ -34,6 +34,7 @@ namespace gemmini{
         shift(m.NewBvState("shift", 32)),
         A_stride(m.NewBvState("A_stride", 16)),
         scale(m.NewBvState("scale", 32)),
+        stride(m.NewBvState("stride", 64)),
         activation_func(m.NewBvState("activation_func", 1)),
         A_T(m.NewBvState("A_T", 1)),
         B_T(m.NewBvState("B_T", 1)),
@@ -48,30 +49,19 @@ namespace gemmini{
         pool_row(m.NewBvState("pool_row", 8)),
         pool_col(m.NewBvState("pool_col", 8)),
         unpool_row(m.NewBvState("unpool_row", 8)),
-        unpool_col(m.NewBvState("unpool_col", 8))
+        unpool_col(m.NewBvState("unpool_col", 8)),
+        // Extra for preload
+        dest_addr(m.NewBvState("dest_addr",32)),
+        dest_row(m.NewBvState("dest_row",32)),
+        dest_col(m.NewBvState("dest_col",32))
         // Memory
         {
-            // DIM x DIM SYSTOLIC ARRAY
             // TODO change DEFAULT_DIM
+            // TODO actl figure out how to get the address width
             auto DIM = DEFAULT_DIM;
-            auto sp_rows = sp_capacity / (DIM * sizeof(inputType)) // NOT FINAL
-
-            for (size_t i = 0; i < sp_rows; i++) {
-                scratchpad.push_back(m.NewMemState(
-                    "s" + std::to_string(i),
-                    INPUT_TYPE_BIT_WIDTH,  
-                    DIM                      
-                ));
-            }
-
-            for (size_t i = 0; i < sp_rows; i++) {
-                accumulator.push_back(m.NewMemState(
-                    "a" + std::to_string(i),
-                    ACC_TYPE_BIT_WIDTH,    
-                    DIM                     
-                ));
-            }
-
+            scratchpad = m.NewMemState("s", 32, INPUT_TYPE_BIT_WIDTH);                 
+            accumulator = m.NewMemState("a", 32, ACC_TYPE_BIT_WIDTH);
+            
             sys_array.resize(DIM);
 
             // TODO Make tile seperations
@@ -94,9 +84,23 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("mvin");
                 auto decode = mvin;
                 instr.SetDecode(decode);
+                auto DRAM_addr = Extract(rs1, 63,0);
                 auto scratchpad_addr = Extract(rs2, 31, 0);
                 auto col_num = Extract(rs2, 47, 32);
                 auto row_num = Extract(rs2, 64, 48);
+                auto row_count = 0;
+                auto col_count = 0;
+                for (size_t i = BvConst(0,16); Ule(i, row_num); i += BvConst(1,16)) {
+                    for (size_t j = BvConst(0,16); Ule(j, col_num); j += BvConst(1,16)) {
+                        auto s_index = BvConst((row_count-1)*DIM + col_count,32);
+                        auto m_index = stride*BvConst((row_count-1)*DIM + col_count,64)
+                        instr.SetUpdate(scratchpad, scratchpad.Store(scratchpad_addr+s_index, DRAM.Load(DRAM_addr+m_index)));
+                        col_count++;
+                    }
+                    row_count++;
+                }
+                // NOT DONE
+                // NEED TO DEAL WITH DIFFERENT MVIN TYPES
             }
 
             {
@@ -104,9 +108,21 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("mvout");
                 auto decode = mvout;
                 instr.SetDecode(decode);
+                auto DRAM_addr = Extract(rs1, 63,0);
                 auto scratchpad_addr = Extract(rs2, 31, 0);
                 auto col_num = Extract(rs2, 47, 32);
                 auto row_num = Extract(rs2, 64, 48);
+                auto row_count = 0;
+                auto col_count = 0;
+                for (size_t i = BvConst(0,16); Ule(i, row_num); i += BvConst(1,16)) {
+                    for (size_t j = BvConst(0,16); Ule(j, col_num); j += BvConst(1,16)) {
+                        auto s_index = BvConst((row_count-1)*DIM + col_count,32);
+                        auto m_index = stride*BvConst((row_count-1)*DIM + col_count,64)
+                        instr.SetUpdate(DRAM, DRAM.Store(DRAM_addr+m_index, scratchpad.Load(scratchpad_addr+s_index)));
+                        col_count++;
+                    }
+                    row_count++;
+                }
             }
         }
 
@@ -116,8 +132,8 @@ namespace gemmini{
                 // config_ex
                 InstrRef instr = m.NewInstr("config_ex");
                 auto decode = config;
-                instr.SetDecode(decode);
-                // rs1[1:0] must be 00, how tf do i force this
+                auto type = Extract(rs1,1,0);
+                instr.SetDecode(decode & (rs1 == BvConst(0,2)));
                 instr.SetUpdate(dataflow,Extract(rs1, 2, 2));
                 instr.SetUpdate(activation_func,Extract(rs1, 3, 3));
                 instr.SetUpdate(A_T,Extract(rs1, 8, 8));
@@ -132,7 +148,8 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("config_mvin");
                 auto decode = config;
                 instr.SetDecode(decode);
-                // rs1[1:0] must be 01
+                auto type = Extract(rs1,1,0);
+                instr.SetDecode(decode & (rs1 == BvConst(1,2)));
                 instr.SetUpdate(acc_type,Extract(rs1, 2, 2));
                 instr.SetUpdate(mvin_type,Extract(rs1, 4, 3));
                 instr.SetUpdate(stride,Extract(rs1, 31, 16)); 
@@ -144,7 +161,8 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("config_mvout");
                 auto decode = config;
                 instr.SetDecode(decode);
-                // rs1[1:0] must be 10
+                auto type = Extract(rs1,1,0);
+                instr.SetDecode(decode & (rs1 == BvConst(2,2)));
                 instr.SetUpdate(max_pool_stride,Extract(rs1, 5, 4));
                 instr.SetUpdate(max_pool_window_size,Extract(rs1, 7, 6));
                 instr.SetUpdate(upper_zero_pad,Extract(rs1, 9, 8));
@@ -170,26 +188,32 @@ namespace gemmini{
                 auto DB_scratchpad_addr = Extract(rs1, 31, 0);
                 auto DB_col = Extract(rs1, 47, 32);
                 auto DB_row = Extract(rs1, 63, 48);
-                auto C_scratchpad_addr = Extract(rs2, 31, 0);
-                auto C_col = Extract(rs2, 47, 32);
-                auto C_row = Extract(rs2, 63, 48);
-                if(dataflow == BoolConst(false)){ // OS
-                    for (size_t i = 0; i < DIM; i++) {
-                        auto& sys_row =  sys_array[i];
-                        auto& scratchpad_row = m.state("s"+std::to_string(i));
-                        
-                        for (size_t j = 0; i < DIM; j++) {
-                            instr.SetUpdate(sys_row[j].D_preload_reg, Store(sys_row, BvConst(j,DIM_WIDTH), Load(scratchpad_row, BvConst(j,DIM_WIDTH))));
+                dest_addr = Extract(rs2, 31, 0);
+                dest_col = Extract(rs2, 47, 32);
+                dest_row = Extract(rs2, 63, 48);
+                if (dataflow == BoolConst(false)) { // OS
+                    auto row_count = 0;
+                    auto col_count = 0;
+                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
+                        auto& sys_row =  sys_array[row_count];
+                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
+                            auto index = BvConst((row_count-1)*DIM + col_count,32);
+                            instr.SetUpdate(sys_row[col_count].D_preload_reg, scratchpad.Load(DB_scratchpad_addr+index));
+                            col_count++;
                         }
+                        row_count++;
                     }
                 } else { // WS
-                    for (size_t i = 0; i < DIM; i++) {
-                        auto& sys_row =  sys_array[i];
-                        auto& scratchpad_row = m.state("s"+std::to_string(i));
-                        
-                        for (size_t j = 0; i < DIM; j++) {
-                            instr.SetUpdate(sys_row[j].B_reg, Store(sys_row, BvConst(j,DIM_WIDTH), Load(scratchpad_row, BvConst(j,DIM_WIDTH))));
+                    auto row_count = 0;
+                    auto col_count = 0;
+                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
+                        auto& sys_row =  sys_array[row_count];
+                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
+                            auto index = BvConst((row_count-1)*DIM + col_count,32);
+                            instr.SetUpdate(sys_row[col_count].B_reg, scratchpad.Load(DB_scratchpad_addr+index));
+                            col_count++;
                         }
+                        row_count++;
                     }
                 }
             }
@@ -205,7 +229,70 @@ namespace gemmini{
                 auto BD_scratchpad_addr = Extract(rs2, 31, 0);
                 auto BD_col = Extract(rs2, 47, 32);
                 auto BD_row = Extract(rs2, 63, 48);
-                // NOT DONE
+                // OS C stays in the PE
+                // WS C flows down
+                if (dataflow == BoolConst(false)) { // OS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
+
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
+
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
+
+                                ExprRef D_val = sys_array[row][col].D_preload_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+                            }
+                        }
+                    }  
+                } else { // WS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
+
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
+
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
+
+                                ExprRef D_val = sys_array[row][col].D_preload_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+
+                                if(col < DIM - 1)
+                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
+                                if(row < DIM - 1)
+                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
+                            }
+                        }
+                    }
+                }
             }
 
             {
@@ -214,16 +301,75 @@ namespace gemmini{
                 auto decode = matmul_compute_accumulated;
                 instr.SetDecode(decode);
                 // TODO
-                // If output-stationary, this instruction will compute on the 
-                // previously computed result (C) in the systolic array, accumulating on top of it
-                // If weight-stationary, this instruction will compute on the previously 
-                // preloaded weights (B) in the systolic array
                 auto A_scratchpad_addr = Extract(rs1, 31, 0);
                 auto A_col = Extract(rs1, 47, 32);
                 auto A_row = Extract(rs1, 63, 48);
                 auto BD_scratchpad_addr = Extract(rs2, 31, 0);
                 auto BD_col = Extract(rs2, 47, 32);
                 auto BD_row = Extract(rs2, 63, 48);
+
+                if (dataflow == BoolConst(false)) { // OS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
+
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
+
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
+
+                                ExprRef D_val = sys_array[row][col].C_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+                            }
+                        }
+                    }  
+                } else { // WS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
+
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
+
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
+
+                                ExprRef D_val = sys_array[row][col].C_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+
+                                if(col < DIM - 1)
+                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
+                                if(row < DIM - 1)
+                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
+                            }
+                        }
+                    }
+                }
             }
         }
 
