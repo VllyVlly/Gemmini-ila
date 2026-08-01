@@ -80,7 +80,8 @@ namespace gemmini{
             ExprRef shift;
             ExprRef A_stride;
             ExprRef scale; 
-            ExprRef stride;
+            ExprRef private_stride;
+            ExprRef memory_stride;
 
             ExprRef activation_func;
             ExprRef A_T;
@@ -115,12 +116,19 @@ namespace gemmini{
             Gemmini();
             void AddInstructions();
 
+            int DIM;
+
             // Helper functions
 
             // TODO 
-            // Model DRAM
             // Add casting helper functions
             // Model transposer, and controller modules?
+            // Finish data movement instructions first
+            // Make tests
+            // Fix the paramater bidwidths
+            // Maybe change DRAM to uninterpreted functions
+            // Handle different mvin types and configuration registers?
+            
     };
 
     // Systolic array is made up of DIM x DIM PE

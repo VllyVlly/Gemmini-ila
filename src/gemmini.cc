@@ -34,7 +34,8 @@ namespace gemmini{
         shift(m.NewBvState("shift", 32)),
         A_stride(m.NewBvState("A_stride", 16)),
         scale(m.NewBvState("scale", 32)),
-        stride(m.NewBvState("stride", 64)),
+        private_stride(m.NewBvState("private_stride", 16)),
+        memory_stride(m.NewBvState("stride", 64)),
         activation_func(m.NewBvState("activation_func", 1)),
         A_T(m.NewBvState("A_T", 1)),
         B_T(m.NewBvState("B_T", 1)),
@@ -58,9 +59,12 @@ namespace gemmini{
         {
             // TODO change DEFAULT_DIM
             // TODO actl figure out how to get the address width
-            auto DIM = DEFAULT_DIM;
-            scratchpad = m.NewMemState("s", 32, INPUT_TYPE_BIT_WIDTH);                 
-            accumulator = m.NewMemState("a", 32, ACC_TYPE_BIT_WIDTH);
+            DIM = DEFAULT_DIM;
+            DRAM = m.NewMemState("DRAM", 64, TEMP_BIT_WIDTH);
+
+            // Scratchpad and accumulator store rows of data per address
+            scratchpad = m.NewMemState("s", 32, DIM*INPUT_TYPE_BIT_WIDTH);                 
+            accumulator = m.NewMemState("a", 32, DIM*ACC_TYPE_BIT_WIDTH);
             
             sys_array.resize(DIM);
 
@@ -88,22 +92,96 @@ namespace gemmini{
                 auto scratchpad_addr = Extract(rs2, 31, 0);
                 auto col_num = Extract(rs2, 47, 32);
                 auto row_num = Extract(rs2, 64, 48);
-                auto row_count = 0;
-                auto col_count = 0;
-                for (size_t i = BvConst(0,16); Ule(i, row_num); i += BvConst(1,16)) {
-                    for (size_t j = BvConst(0,16); Ule(j, col_num); j += BvConst(1,16)) {
-                        auto s_index = BvConst((row_count-1)*DIM + col_count,32);
-                        auto m_index = stride*BvConst((row_count-1)*DIM + col_count,64)
-                        instr.SetUpdate(scratchpad, scratchpad.Store(scratchpad_addr+s_index, DRAM.Load(DRAM_addr+m_index)));
-                        col_count++;
+                int row_count = 0;
+                
+                auto destination = Extract(rs2, 31, 31);
+                auto chunks = (col_num + BvConst(DIM-1,16)) / BvConst(DIM,16);
+                if(destination == BvConst(0,1)) { // to scratchpad
+                    size_t i = 0;
+                    while(i++){
+                        auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), BoolConst(true), BoolConst(false)); // Continue while i < row_num
+
+                        int chunk_count = 0;
+
+                        size_t chunk = 0;
+                        while(chunk++){
+                            auto continue_cond2 = Ite(Ugt(chunks, BvConst(chunk,16)), BoolConst(true), BoolConst(false)); // Continue while chunk < chunks
+
+                            auto col_start = BvConst(chunk,16) * BvConst(DIM,16);
+                            int left = chunk_count*DIM;
+                            int right;
+
+                            auto temp = Ite(Ule(col_start+BvConst(DIM,16), col_num), BoolConst(true), BoolConst(false));
+                            if(temp == BoolConst(true)){
+                                right = left+DIM-1;
+                            } else {
+                                right = left;
+                                while(Ite(Ult(BvConst(right+1,16), col_num), BoolConst(true), BoolConst(false)) == BoolConst(true)){
+                                    right++;
+                                }
+                            }   
+
+                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride);
+                            auto sp_chunk_addr = scratchpad_addr + BvConst(row_count-1,32) + (ZExt(private_stride, 32) * BvConst(chunk,32));
+                            instr.SetUpdate(scratchpad, scratchpad.Store(sp_chunk_addr, Extract(DRAM.Load(dram_chunk_addr), right*INPUT_TYPE_BIT_WIDTH-1, left*INPUT_TYPE_BIT_WIDTH)));
+                            
+                            chunk_count++;
+
+                            if(continue_cond2 == BoolConst(false))
+                                break;
+                        }
+
+                        row_count++;
+                        if(continue_cond == BoolConst(false))
+                            break;
                     }
-                    row_count++;
+                    
+                } else { // to accumulator
+                    size_t i = 0;
+                    while(i++){
+                        auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), BoolConst(true), BoolConst(false)); // Continue while i < row_num
+
+                        int chunk_count = 0;
+
+                        size_t chunk = 0;
+                        while(chunk++){
+                            auto continue_cond2 = Ite(Ugt(chunks, BvConst(chunk,16)), BoolConst(true), BoolConst(false)); // Continue while chunk < chunks
+
+                            auto col_start = BvConst(chunk,16) * BvConst(DIM,16);
+                            int left = chunk_count*DIM;
+                            int right;
+
+                            auto temp = Ite(Ule(col_start+BvConst(DIM,16), col_num), BoolConst(true), BoolConst(false));
+                            if(temp == BoolConst(true)){
+                                right = left+DIM-1;
+                            } else {
+                                right = left;
+                                while(Ite(Ult(BvConst(right+1,16), col_num), BoolConst(true), BoolConst(false)) == BoolConst(true)){
+                                    right++;
+                                }
+                            }   
+
+                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride);
+                            auto acc_chunk_addr = scratchpad_addr + BvConst(row_count-1,32) + (ZExt(private_stride, 32) * BvConst(chunk,32));
+                            instr.SetUpdate(accumulator, accumulator.Store(acc_chunk_addr, Extract(DRAM.Load(dram_chunk_addr), right*ACC_TYPE_BIT_WIDTH-1, left*ACC_TYPE_BIT_WIDTH)));
+                            
+                            chunk_count++;
+
+                            if(continue_cond2 == BoolConst(false))
+                                break;
+                        }
+
+                        row_count++;
+                        if(continue_cond == BoolConst(false))
+                            break;
+                    }
                 }
-                // NOT DONE
-                // NEED TO DEAL WITH DIFFERENT MVIN TYPES
+                // Figure out how to get the index for moving the columns better
+                // Actl test it
             }
 
             {
+                // TODO
                 // mvout
                 InstrRef instr = m.NewInstr("mvout");
                 auto decode = mvout;
@@ -152,7 +230,8 @@ namespace gemmini{
                 instr.SetDecode(decode & (rs1 == BvConst(1,2)));
                 instr.SetUpdate(acc_type,Extract(rs1, 2, 2));
                 instr.SetUpdate(mvin_type,Extract(rs1, 4, 3));
-                instr.SetUpdate(stride,Extract(rs1, 31, 16)); 
+                instr.SetUpdate(private_stride,Extract(rs1, 31, 16)); 
+                instr.SetUpdate(memory_stride,Extract(rs2, 63, 0));
                 instr.SetUpdate(scale,Extract(rs1, 63, 32)); 
             }
 
