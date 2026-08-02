@@ -35,7 +35,8 @@ namespace gemmini{
         A_stride(m.NewBvState("A_stride", 16)),
         scale(m.NewBvState("scale", 32)),
         private_stride(m.NewBvState("private_stride", 16)),
-        memory_stride(m.NewBvState("stride", 64)),
+        memory_stride_mvin(m.NewBvState("memory_stride_mvin", 64)),
+        memory_stride_mvout(m.NewBvState("memory_stride_mvout", 64)),
         activation_func(m.NewBvState("activation_func", 1)),
         A_T(m.NewBvState("A_T", 1)),
         B_T(m.NewBvState("B_T", 1)),
@@ -121,7 +122,7 @@ namespace gemmini{
                                 }
                             }   
 
-                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride);
+                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride_mvin);
                             auto sp_chunk_addr = scratchpad_addr + BvConst(row_count-1,32) + (ZExt(private_stride, 32) * BvConst(chunk,32));
                             instr.SetUpdate(scratchpad, scratchpad.Store(sp_chunk_addr, Extract(DRAM.Load(dram_chunk_addr), right*INPUT_TYPE_BIT_WIDTH-1, left*INPUT_TYPE_BIT_WIDTH)));
                             
@@ -161,7 +162,7 @@ namespace gemmini{
                                 }
                             }   
 
-                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride);
+                            auto dram_chunk_addr = DRAM_addr + (BvConst(row_count-1,64) * memory_stride_mvin);
                             auto acc_chunk_addr = scratchpad_addr + BvConst(row_count-1,32) + (ZExt(private_stride, 32) * BvConst(chunk,32));
                             instr.SetUpdate(accumulator, accumulator.Store(acc_chunk_addr, Extract(DRAM.Load(dram_chunk_addr), right*ACC_TYPE_BIT_WIDTH-1, left*ACC_TYPE_BIT_WIDTH)));
                             
@@ -231,7 +232,7 @@ namespace gemmini{
                 instr.SetUpdate(acc_type,Extract(rs1, 2, 2));
                 instr.SetUpdate(mvin_type,Extract(rs1, 4, 3));
                 instr.SetUpdate(private_stride,Extract(rs1, 31, 16)); 
-                instr.SetUpdate(memory_stride,Extract(rs2, 63, 0));
+                instr.SetUpdate(memory_stride_mvin,Extract(rs2, 63, 0));
                 instr.SetUpdate(scale,Extract(rs1, 63, 32)); 
             }
 
@@ -251,6 +252,7 @@ namespace gemmini{
                 instr.SetUpdate(pool_col,Extract(rs1, 47, 40));
                 instr.SetUpdate(unpool_row,Extract(rs1, 55, 48));
                 instr.SetUpdate(unpool_col,Extract(rs1, 63, 56));
+                instr.SetUpdate(memory_stride_mvout,Extract(rs2, 63, 0));
             }
 
             // TODO maybe add config_norm and flush

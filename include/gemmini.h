@@ -81,7 +81,8 @@ namespace gemmini{
             ExprRef A_stride;
             ExprRef scale; 
             ExprRef private_stride;
-            ExprRef memory_stride;
+            ExprRef memory_stride_mvin;
+            ExprRef memory_stride_mvout;
 
             ExprRef activation_func;
             ExprRef A_T;

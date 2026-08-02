@@ -74,7 +74,7 @@ void test_config_mvin(Gemmini& gem){
         rs1_val |= (32ULL << 16);        // bits 31:16 = 32 (private stride)
         rs1_val |= (0x3F800000ULL << 32); // bits 63:32 = 1.0f
         
-        // rs2[63:0] = 64 (memory stride in bytes)
+        // rs2[63:0] = 64 (memory stride for mvin in bytes)
         uint64_t rs2_val = 64;
         
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
@@ -82,7 +82,7 @@ void test_config_mvin(Gemmini& gem){
     }, 
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
-        // Verify all state updates at step 1
+        // Verify config_mvin state updates at step 1
         auto acc_type = TO_STR(gem.acc_type, 1, u, mdl);
         EXPECT_EQ_UINT(std::stoull(acc_type), 1);
         
@@ -92,8 +92,8 @@ void test_config_mvin(Gemmini& gem){
         auto private_stride = TO_STR(gem.private_stride, 1, u, mdl);
         EXPECT_EQ_UINT(std::stoull(private_stride), 32);
         
-        auto memory_stride = TO_STR(gem.memory_stride, 1, u, mdl);
-        EXPECT_EQ_UINT(std::stoull(memory_stride), 64);
+        auto mem_stride_mvin = TO_STR(gem.memory_stride_mvin, 1, u, mdl);
+        EXPECT_EQ_UINT(std::stoull(mem_stride_mvin), 64);
         
         auto scale = TO_STR(gem.scale, 1, u, mdl);
         EXPECT_EQ_UINT(std::stoull(scale), 0x3F800000);
@@ -127,7 +127,7 @@ void test_config_mvout(Gemmini& gem){
         rs1_val |= (8ULL << 48);         // bits 55:48 = 8 (unpool_row)
         rs1_val |= (8ULL << 56);         // bits 63:56 = 8 (unpool_col)
         
-        // rs2[63:0] = 128 (memory stride in bytes for store)
+        // rs2[63:0] = 128 (memory stride for mvout in bytes)
         uint64_t rs2_val = 128;
         
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
@@ -135,7 +135,7 @@ void test_config_mvout(Gemmini& gem){
     }, 
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
-        // Verify all state updates at step 1
+        // Verify config_mvout state updates at step 1
         auto max_pool_stride = TO_STR(gem.max_pool_stride, 1, u, mdl);
         EXPECT_EQ_UINT(std::stoull(max_pool_stride), 1);
         
@@ -163,9 +163,8 @@ void test_config_mvout(Gemmini& gem){
         auto unpool_col = TO_STR(gem.unpool_col, 1, u, mdl);
         EXPECT_EQ_UINT(std::stoull(unpool_col), 8);
         
-        // Note: The memory stride in rs2 is not stored as a state variable
-        // in this snippet, but if you have a state for it, verify it here.
-        // auto mem_stride = TO_STR(gem.config_mvout_stride, 1, u, mdl);
-        // EXPECT_EQ_UINT(std::stoull(mem_stride), 128);
+        auto mem_stride_mvout = TO_STR(gem.memory_stride_mvout, 1, u, mdl);
+        EXPECT_EQ_UINT(std::stoull(mem_stride_mvout), 128);
+        
     });
 }
