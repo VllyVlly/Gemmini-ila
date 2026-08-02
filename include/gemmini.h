@@ -39,34 +39,34 @@ namespace gemmini{
             // Following are parameters
 
             // Systolic array dimensions 
-            ExprRef tileRows;
-            ExprRef tileColumns;
-            ExprRef meshRows;
-            ExprRef meshColumns;
+            uint64_t tileRows;
+            uint64_t tileColumns;
+            uint64_t meshRows;
+            uint64_t meshColumns;
 
             // Dataflow
             ExprRef dataflow;
 
             // Scratchpad and accumulator memory
-            ExprRef sp_banks;
-            ExprRef sp_capacity;
-            ExprRef acc_capacity;
+            uint64_t sp_banks;
+            uint64_t sp_capacity;
+            uint64_t acc_capacity;
 
             // Type paramaters
-            ExprRef inputType;
-            ExprRef outputType;
-            ExprRef accType;
+            DataType inputType;
+            DataType outputType;
+            DataType accType;
 
             // Access-execute queue
-            ExprRef ld_queue_length;
-            ExprRef st_queue_length;
-            ExprRef ex_queue_length;
-            ExprRef rob_entries;
+            uint64_t ld_queue_length;
+            uint64_t st_queue_length;
+            uint64_t ex_queue_length;
+            uint64_t rob_entries;
 
             // DMA
-            ExprRef dma_maxbytes;
-            ExprRef dma_buswidth;
-            ExprRef mem_pipeline;
+            uint64_t dma_maxbytes;
+            uint64_t dma_buswidth;
+            uint64_t mem_pipeline;
 
             // Scaling is optional and shall not be done for now for my sanity
 
@@ -131,6 +131,58 @@ namespace gemmini{
             // Handle different mvin types and configuration registers?
             
     };
+
+    enum class DataTypeKind : uint8_t {
+        SINT = 0,
+        UINT = 1,
+        FLOAT = 2
+    };
+
+    struct DataType {
+        DataTypeKind kind;
+        uint64_t bit_width;
+        
+        // For float types only
+        uint64_t exp_bits;
+        uint64_t mantissa_bits;
+        
+        // Constructor for integer types
+        DataType(DataTypeKind k, uint64_t bw) 
+            : kind(k), bit_width(bw), exp_bits(0), mantissa_bits(0) {}
+        
+        // Constructor for float types
+        DataType(uint64_t exp, uint64_t mantissa) 
+            : kind(DataTypeKind::FLOAT), 
+            bit_width(exp + mantissa + 1),
+            exp_bits(exp), 
+            mantissa_bits(mantissa) {}
+        
+        // Default constructor
+        DataType() : kind(DataTypeKind::SINT), bit_width(0), 
+                    exp_bits(0), mantissa_bits(0) {}
+        
+        // Convert to string for debugging
+        std::string to_string() const {
+            switch(kind) {
+                case DataTypeKind::SINT: 
+                    return "SInt(" + std::to_string(bit_width) + ".W)";
+                case DataTypeKind::UINT: 
+                    return "UInt(" + std::to_string(bit_width) + ".W)";
+                case DataTypeKind::FLOAT: 
+                    return "Float(" + std::to_string(exp_bits) + ", " + 
+                        std::to_string(mantissa_bits) + ")";
+                default: 
+                    return "Unknown";
+            }
+        }
+    };
+
+    // Helper to create common types
+    inline DataType SInt(uint64_t width) { return DataType(DataTypeKind::SINT, width); }
+    inline DataType UInt(uint64_t width) { return DataType(DataTypeKind::UINT, width); }
+    inline DataType Float(uint64_t exp, uint64_t mantissa) { 
+        return DataType(exp, mantissa); 
+    }
 
     // Systolic array is made up of DIM x DIM PE
     struct PE {
