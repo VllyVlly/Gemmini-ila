@@ -1,34 +1,29 @@
 # ========================================
-# Build directories
+# Build folder and all contents
 # ========================================
 build/
-cmake-build-*/
-out/
-bin/
-obj/
-lib/
-*.o
-*.obj
-*.exe
-*.dll
-*.so
-*.so.*
-*.dylib
-*.a
+build/*
+build/**/*
 
 # ========================================
-# IDE and editor files
+# Shared libraries (.so files)
 # ========================================
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
-*.suo
-*.user
-*.sln.docstates
+*.so
+*.so.*
+*.so.[0-9]*
+*.so.[0-9]*.[0-9]*
+*.so.[0-9]*.[0-9]*.[0-9]*
+
+# ========================================
+# Object files and compiled binaries
+# ========================================
+*.o
+*.obj
+*.a
+*.lib
+*.exe
+*.dll
+*.dylib
 
 # ========================================
 # CMake generated files
@@ -37,48 +32,7 @@ CMakeCache.txt
 CMakeFiles/
 cmake_install.cmake
 Makefile
-CMakeUserPresets.json
+compile_commands.json
 *.cmake
 !CMakeLists.txt
-!*.cmake.in
-!*.cmake-format
-
-# ========================================
-# ILAng specific
-# ========================================
-ILAng/build/
-ILAng/install/
-ILAng/lib/
-ILAng/bin/
-
-# ========================================
-# Log files
-# ========================================
-*.log
-*.tmp
-*.bak
-
-# ========================================
-# Test outputs
-# ========================================
-test_results.xml
-coverage/
-*.gcda
-*.gcno
-
-# ========================================
-# Python (if any)
-# ========================================
-__pycache__/
-*.pyc
-.pytest_cache/
-
-# ========================================
-# OS specific
-# ========================================
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
 ILAng/
