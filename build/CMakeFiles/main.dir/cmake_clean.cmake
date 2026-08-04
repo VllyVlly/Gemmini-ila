@@ -3,6 +3,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/main.dir/src/gemmini.cc.o.d"
   "CMakeFiles/main.dir/src/main.cc.o"
   "CMakeFiles/main.dir/src/main.cc.o.d"
+  "CMakeFiles/main.dir/src/test_helpers.cc.o"
+  "CMakeFiles/main.dir/src/test_helpers.cc.o.d"
   "main"
   "main.pdb"
 )

@@ -66,7 +66,7 @@ void CHECK(const std::string& test_name, Gemmini& gem, const std::vector<std::st
     g_current_failures = 0;
     
     try {
-        ilang::Ila m = sme.get();
+        ilang::Ila m = gem.get();
         
         // find instructions by name
         std::vector<ilang::InstrRef> instrs;

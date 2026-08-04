@@ -1,5 +1,5 @@
-#include "../include/test_helpers.h"
-#include "../include/Gemmini.h"
+#include "test_helpers.h"
+#include "gemmini.h"
 
 using namespace ilang;
 using namespace gemmini;
