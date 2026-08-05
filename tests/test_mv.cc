@@ -18,10 +18,9 @@ void test_mvin(Gemmini& gem){
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = TO_STR(gem.scratchpad.Load(0x2000), 1, u, mdl);
+        std::cout << result << '\n';
         EXPECT_TRUE(result == "42");
-    },
-
-    );
+    });
 }
 
 void test_mvout(Gemmini& gem){
@@ -33,11 +32,12 @@ void test_mvout(Gemmini& gem){
         // Set rs1 as DRAM destination address
         cstr_step_bv(s, u, ctx, gem.rs1, 0x1000, 64, 0);
         // Set rs2 as scratchpad source address and 1 row, 1 column
-        cstr_step_bv(s, u, ctx, gem.rs2, build_mvout_rs2(0x2000, 1, 1), 64, 0);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 0);
     }, 
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = TO_STR(gem.DRAM.Load(0x1000), 1, u, mdl);
+        std::cout << result << '\n';
         EXPECT_TRUE(result == "42");
     });
 }

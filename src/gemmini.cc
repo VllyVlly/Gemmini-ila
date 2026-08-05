@@ -66,7 +66,7 @@ namespace gemmini{
                 // mvin
                 InstrRef instr = m.NewInstr("mvin");
                 auto decode = mvin;
-                instr.SetDecode(decode);
+                instr.SetDecode(funct == decode);
                 auto DRAM_addr = Extract(rs1, 63,0);
                 auto scratchpad_addr = Extract(rs2, 31, 0);
                 auto col_num = Extract(rs2, 47, 32);
@@ -117,33 +117,36 @@ namespace gemmini{
             }
 
             {
-                // TODO
                 // mvout
                 InstrRef instr = m.NewInstr("mvout");
                 auto decode = mvout;
-                instr.SetDecode(decode);
+                instr.SetDecode(funct == decode);
                 auto DRAM_addr = Extract(rs1, 63,0);
                 auto scratchpad_addr = Extract(rs2, 31, 0);
                 auto col_num = Extract(rs2, 47, 32);
                 auto row_num = Extract(rs2, 64, 48);
                 auto source = Extract(rs2, 31, 31);
                 size_t i = 0;
+                
+                auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), SYMBOLIC_TRUE, SYMBOLIC_FALSE); 
+                if(checkCond(continue_cond)){
+                    auto dram_addr = DRAM_addr + (BvConst(i,64) * memory_stride_mvin);
+                    auto sour_chunk_addr = scratchpad_addr + BvConst(i,32);
+                    auto source_data = Ite(source == BvConst(0, 1), scratchpad.Load(sour_chunk_addr), accumulator.Load(sour_chunk_addr));
+                    instr.SetUpdate(DRAM, DRAM.Store(dram_addr, source_data));
+                    i++;
+                }
                 while(i++){
                     // Keeps looping i-th row transfer till it equals row_num
                     auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), SYMBOLIC_TRUE, SYMBOLIC_FALSE); 
                     if(!checkCond(continue_cond)){
-                            break;
+                        break;
                     }
                     
-                    auto dram_addr = DRAM_addr + (BvConst(i-1,64) * memory_stride_mvin);
-                    auto sour_chunk_addr = scratchpad_addr + BvConst(i-1,32);
-                    instr.SetUpdate(DRAM, Ite(source == BvConst(0, 1), 
-                                    DRAM.Store(dram_addr, scratchpad.Load(sour_chunk_addr)), 
-                                    DRAM));
-                    instr.SetUpdate(DRAM, Ite(source == BvConst(1, 1),
-                                    DRAM.Store(dram_addr, accumulator.Load(sour_chunk_addr)), 
-                                    DRAM));
-                
+                    auto dram_addr = DRAM_addr + (BvConst(i,64) * memory_stride_mvin);
+                    auto sour_chunk_addr = scratchpad_addr + BvConst(i,32);
+                    auto source_data = Ite(source == BvConst(0, 1), scratchpad.Load(sour_chunk_addr), accumulator.Load(sour_chunk_addr));
+                    instr.SetUpdate(DRAM, DRAM.Store(dram_addr, source_data));
                 }
             }
         }
@@ -155,13 +158,13 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("config_ex");
                 auto decode = config;
                 auto type = Extract(rs1,1,0);
-                instr.SetDecode(decode & (rs1 == BvConst(0,2)));
-                instr.SetUpdate(dataflow,Extract(rs1, 2, 2));
+                instr.SetDecode((funct == decode) & (type == BvConst(0,2)));
+                instr.SetUpdate(dataflow,Ite(Extract(rs1, 2, 2) == BvConst(1,1), BoolConst(true), BoolConst(false)));
                 instr.SetUpdate(activation_func,Extract(rs1, 3, 3));
                 instr.SetUpdate(A_T,Extract(rs1, 8, 8));
                 instr.SetUpdate(B_T,Extract(rs1, 9, 9));
                 instr.SetUpdate(A_stride,Extract(rs1, 31, 16)); 
-                instr.SetUpdate(scalar,Extract(rs1, 63, 32)); // overlap with scale?
+                instr.SetUpdate(scalar,Extract(rs1, 63, 32));
                 instr.SetUpdate(right_shift,Extract(rs2, 31, 0)); 
             }
 
@@ -169,9 +172,8 @@ namespace gemmini{
                 // config_mvin
                 InstrRef instr = m.NewInstr("config_mvin");
                 auto decode = config;
-                instr.SetDecode(decode);
                 auto type = Extract(rs1,1,0);
-                instr.SetDecode(decode & (rs1 == BvConst(1,2)));
+                instr.SetDecode((funct == decode) & (type == BvConst(1,2)));
                 instr.SetUpdate(acc_type,Extract(rs1, 2, 2));
                 instr.SetUpdate(mvin_type,Extract(rs1, 4, 3));
                 instr.SetUpdate(private_stride,Extract(rs1, 31, 16)); 
@@ -183,9 +185,8 @@ namespace gemmini{
                 // config_mvout
                 InstrRef instr = m.NewInstr("config_mvout");
                 auto decode = config;
-                instr.SetDecode(decode);
                 auto type = Extract(rs1,1,0);
-                instr.SetDecode(decode & (rs1 == BvConst(2,2)));
+                instr.SetDecode((funct == decode) & (type == BvConst(2,2)));
                 instr.SetUpdate(max_pool_stride,Extract(rs1, 5, 4));
                 instr.SetUpdate(max_pool_window_size,Extract(rs1, 7, 6));
                 instr.SetUpdate(upper_zero_pad,Extract(rs1, 9, 8));
@@ -202,7 +203,7 @@ namespace gemmini{
             // Need to find funct and behavior
         }
 
-        // {
+        {
         //     // Core matmul sequence 
         //     {
         //         // matmul.preload
@@ -401,5 +402,7 @@ namespace gemmini{
     }
 
     
+
+    }
 
 }

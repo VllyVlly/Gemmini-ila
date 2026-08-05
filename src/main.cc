@@ -1,5 +1,6 @@
 #include "gemmini.h"
 #include "test_helpers.h"
+#include "tests.h"
 #include <iostream>
 
 /** Multipurpose Main Function
@@ -9,7 +10,7 @@
 
 using namespace gemmini;
 
-void list_instrs(Gemminni& gem) {
+void list_instrs(Gemmini& gem) {
     Ila m = gem.get();
     
     std::cout << "\nInstructions created:\n";
@@ -19,7 +20,7 @@ void list_instrs(Gemminni& gem) {
     std::cout << std::endl;
 }
 
-void list_states(Gemminni& gem) {
+void list_states(Gemmini& gem) {
     Ila m = gem.get();
 
     std::cout << "\nState variables:\n";
@@ -31,7 +32,9 @@ void list_states(Gemminni& gem) {
 }
 
 int main() {
-    Gemmini gem;
+    Gemmini gem{cfg()};
+
+    gem.AddInstructions();
     
     // list everything
     list_states(gem);

@@ -1,7 +1,7 @@
 #include <iostream>
 #include <iomanip>
-#include "../include/test_helpers.h"
-#include "../include/gemmini.h"
+#include "test_helpers.h"
+#include "gemmini.h"
 
 namespace gemmini {
 

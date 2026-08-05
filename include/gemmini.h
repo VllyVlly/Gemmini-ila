@@ -143,7 +143,8 @@ namespace gemmini{
 
     class Gemmini {
 
-        private:
+            
+        public:
 
             cfg _Cfg;
 
@@ -193,8 +194,8 @@ namespace gemmini{
             ExprRef funct;
             ExprRef rs1;
             ExprRef rs2;
-            
-        public:
+
+
             Gemmini(cfg Cfg);
             void AddInstructions();
 
