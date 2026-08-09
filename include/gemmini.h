@@ -10,12 +10,8 @@ namespace gemmini{
     // TODO CHANGE LATER
     #define RS_WIDTH 64
 
-    #define SYMBOLIC_TRUE BvConst(0,1)
-    #define SYMBOLIC_FALSE BvConst(0,2)
-
-    inline bool checkCond(ExprRef condition){
-        return (condition.bit_width() == 1) ? true : false;
-    }
+    #define SYMB_TRUE BoolConst(true)
+    #define SYMB_FALSE BoolConst(false)
 
     constexpr int DRAM_ADDR_WIDTH = 32;
     constexpr int DRAM_DATA_WIDTH = 64;
@@ -184,6 +180,17 @@ namespace gemmini{
             ExprRef pool_col;
             ExprRef unpool_row;
             ExprRef unpool_col;
+
+            // mvin and mvout
+            ExprRef mvin_DRAM_addr;
+            ExprRef mvin_dest_addr;
+            ExprRef mvin_col_num;
+            ExprRef mvin_row_num;
+            ExprRef mvin_destination;
+
+            ExprRef start_row;
+            ExprRef start_chunk;
+            ExprRef done;
 
             // Preload stuff
             ExprRef dest_addr;
