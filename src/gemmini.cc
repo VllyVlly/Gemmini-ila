@@ -116,26 +116,15 @@ namespace gemmini{
                     auto should_transfer = Ite(!all_done & chunk_valid, SYMB_TRUE, SYMB_FALSE);
                     
                     // Get the row
-                    auto dram_base = mvin_DRAM_addr + (start_row * memory_stride_mvin) + (start_chunk * BvConst(DIM,16));
+                    auto dram_base = mvin_DRAM_addr + (start_row * memory_stride_mvin) + (start_chunk * BvConst(DIM,64));
                     auto dest_base = mvin_dest_addr + (start_row) + (start_chunk * private_stride);
                     
-                    // For full chunks, transfer all DIM elements at once
-                    auto is_full_chunk = Ite(chunk_width == BvConst(DIM, 16), SYMB_TRUE, SYMB_FALSE);
-                    
-                    // Full chunk transfer (all DIM elements in one go)
-                    auto full_load = DRAM.Load(dram_base);
-                    auto full_sp_store = scratchpad.Store(dest_base, full_load);
-                    auto full_acc_store = accumulator.Store(dest_base, full_load);
-                    
-                    // Partial chunk transfer (element by element)
-                    // We'll unroll DIM elements and gate each with a condition
-                    auto sp_partial_store = scratchpad;  // Start with current value
-                    auto acc_partial_store = accumulator;
-                    
-                    auto current_row = scratchpad.Load(dest_row_addr);
+                    auto current_row_input = scratchpad.Load(dest_base);
+                    auto current_row_acc = accumulator.Load(dest_base);
 
                     // Build new row from DRAM (or load existing)
-                    auto new_row = current_row;  // Start with current row
+                    auto new_row_input = current_row_input;  // Start with current row
+                    auto new_row_acc = current_row_acc;
 
                     for (size_t elem = 0; elem < DIM; elem++) {
                         auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
@@ -146,29 +135,28 @@ namespace gemmini{
                         auto load_elem = DRAM.Load(dram_elem_addr);
                         
                         // Create mask for this element
-                        auto elem_mask = BvConst(((1ULL << ELEM_BITS) - 1) << (elem * ELEM_BITS), ROW_BITS);
+                        auto elem_mask_input = BvConst(((1ULL << _Cfg.input_bits()) - 1) << (elem * _Cfg.input_bits()), DIM * _Cfg.input_bits());
+                        auto elem_mask_acc = BvConst(((1ULL << _Cfg.acc_bits()) - 1) << (elem * _Cfg.acc_bits()), DIM * _Cfg.acc_bits());
                         
                         // Clear the element's bits in the new row
-                        auto row_cleared = new_row & ~elem_mask;
+                        auto row_cleared_input = new_row & ~elem_mask_input;
+                        auto row_cleared_acc= new_row & ~elem_mask_acc;
                         
                         // Insert the new element
-                        auto shifted_elem = ZExt(load_elem, ROW_BITS) << (elem * ELEM_BITS);
-                        auto row_updated = row_cleared | shifted_elem;
+                        auto shifted_elem_input = ZExt(load_elem, DIM * _Cfg.input_bits()) << (elem * _Cfg.input_bits());
+                        auto shifted_elem_acc = ZExt(load_elem, DIM * _Cfg.acc_bits()) << (elem * _Cfg.acc_bits());
+                        auto row_updated_input = row_cleared | shifted_elem_input;
+                        auto row_updated_acc = row_cleared | shifted_elem_acc;
                         
                         // Conditionally update
-                        new_row = Ite(should_update, row_updated, new_row);
+                        new_row_input = Ite(should_update, row_updated_input, new_row_input);
+                        new_row_acc = Ite(should_update, row_updated_acc, new_row_acc);
                     }
                     
-                    // Choose between full and partial transfer
-                    auto final_sp_store = Ite(is_full_chunk, full_sp_store, sp_partial_store);
-                    auto final_acc_store = Ite(is_full_chunk, full_acc_store, acc_partial_store);
-                    
-                    // Store to scratchpad or accumulator based on destination
-                    auto store_to_sp = Ite(should_transfer & (dma_dest == BvConst(0, 1)), SYMB_TRUE, SYMB_FALSE);
-                    auto store_to_acc =Ite(should_transfer & (dma_dest == BvConst(1, 1)), SYMB_TRUE, SYMB_FALSE);
-                    
-                    instr.SetUpdate(scratchpad, Ite(store_to_sp, final_sp_store, scratchpad));
-                    instr.SetUpdate(accumulator, Ite(store_to_acc, final_acc_store, accumulator));
+                    auto store_sp = scratchpad.Store(dest_base, new_row);
+                    auto store_acc = accumulator.Store(dest_base, new_row);
+                    instr.SetUpdate(scratchpad, Ite(should_transfer & mvin_destination == BvConst(0, 1), final_sp_store, scratchpad));
+                    instr.SetUpdate(accumulator, Ite(should_transfer & mvin_destination == BvConst(1, 1), final_acc_store, accumulator));
                     
                     // Advance chunk counter
                     auto next_chunk = start_chunk + BvConst(1, 16);
