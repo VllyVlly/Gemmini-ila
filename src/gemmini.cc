@@ -153,8 +153,8 @@ namespace gemmini{
                         new_row_acc = Ite(should_update, row_updated_acc, new_row_acc);
                     }
                     
-                    auto store_sp = scratchpad.Store(dest_base, new_row);
-                    auto store_acc = accumulator.Store(dest_base, new_row);
+                    auto store_sp = scratchpad.Store(dest_base, new_row_input);
+                    auto store_acc = accumulator.Store(dest_base, new_row_acc);
                     instr.SetUpdate(scratchpad, Ite(should_transfer & mvin_destination == BvConst(0, 1), final_sp_store, scratchpad));
                     instr.SetUpdate(accumulator, Ite(should_transfer & mvin_destination == BvConst(1, 1), final_acc_store, accumulator));
                     
