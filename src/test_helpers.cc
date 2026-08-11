@@ -49,6 +49,54 @@ std::string TO_STR(const ilang::ExprRef &ila_expr, int step, ilang::IlaZ3Unrolle
     return eval.to_string();
 }
 
+std::string HexToDecimalString(const std::string& hex_in) {
+    std::string hex = hex_in;
+
+    // Strip optional "#x" or "0x" prefix
+    if (hex.size() >= 2 && hex[0] == '#' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex = hex.substr(2);
+    } else if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+        hex = hex.substr(2);
+    }
+
+    // Strip leading zeros (keep at least one digit)
+    size_t first_nonzero = hex.find_first_not_of('0');
+    if (first_nonzero == std::string::npos) {
+        return "0"; // all zeros
+    }
+    hex = hex.substr(first_nonzero);
+
+    // Big-decimal accumulator, stored as vector of decimal digits (most significant first)
+    std::vector<int> decimal_digits = {0};
+
+    auto multiply_by_16_add_digit = [&](int digit_value) {
+        int carry = digit_value;
+        for (int i = static_cast<int>(decimal_digits.size()) - 1; i >= 0; --i) {
+            int val = decimal_digits[i] * 16 + carry;
+            decimal_digits[i] = val % 10;
+            carry = val / 10;
+        }
+        while (carry > 0) {
+            decimal_digits.insert(decimal_digits.begin(), carry % 10);
+            carry /= 10;
+        }
+    };
+
+    for (char c : hex) {
+        int digit_value;
+        if (c >= '0' && c <= '9') digit_value = c - '0';
+        else if (c >= 'a' && c <= 'f') digit_value = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') digit_value = c - 'A' + 10;
+        else continue; // skip any stray non-hex chars
+
+        multiply_by_16_add_digit(digit_value);
+    }
+
+    std::string result;
+    for (int d : decimal_digits) result += static_cast<char>('0' + d);
+    return result;
+}
+
 void PRINT(const ilang::ExprRef &ila_expr, int step, ilang::IlaZ3Unroller &u, z3::model &mdl, std::string label) {
     static size_t counter = 0;
     auto expr = u.GetZ3Expr(ila_expr, step);

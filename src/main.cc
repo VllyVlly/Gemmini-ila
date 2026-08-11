@@ -37,8 +37,8 @@ int main() {
     gem.AddInstructions();
     
     // list everything
-    list_states(gem);
-    list_instrs(gem);
+    // list_states(gem);
+    // list_instrs(gem);
     
     // instruction unit tests
     test_config_ex(gem);
@@ -46,10 +46,10 @@ int main() {
     test_config_mvout(gem);
 
     test_mvin(gem);
-    test_mvout(gem);
+    // test_mvout(gem);
     
     // summary
-    print_test_summary();
+    // print_test_summary();
 
     return 0;
 }

@@ -106,8 +106,8 @@ namespace gemmini{
         accType(accType_)
         {};
 
-        uint64_t input_bits() const { return static_cast<uint64_t>(inputType); }
-        uint64_t acc_bits() const { return static_cast<uint64_t>(accType); }
+        static constexpr size_t input_bits = 8;
+        static constexpr size_t acc_bits = 32;
     };
 
 
@@ -188,6 +188,12 @@ namespace gemmini{
             ExprRef mvin_row_num;
             ExprRef mvin_destination;
 
+            ExprRef mvout_DRAM_addr;
+            ExprRef mvout_sour_addr;
+            ExprRef mvout_col_num;
+            ExprRef mvout_row_num;
+            ExprRef mvout_source;
+
             ExprRef start_row;
             ExprRef start_chunk;
             ExprRef done;
@@ -221,7 +227,7 @@ namespace gemmini{
             // Make tests
             // Fix the paramater bidwidths
             // Maybe change DRAM to uninterpreted functions
-            // Handle different mvin types and configuration registers?
+            // Make sure that mvin accumulator bidwidth type is affected by config_mvin
             
     };
 

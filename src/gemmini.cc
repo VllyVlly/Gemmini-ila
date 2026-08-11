@@ -35,12 +35,17 @@ namespace gemmini{
         pool_col(m.NewBvState("pool_col", 8)),
         unpool_row(m.NewBvState("unpool_row", 8)),
         unpool_col(m.NewBvState("unpool_col", 8)),
-        // ---------- Extra for mvin -------------
+        // ---------- Extra for mvin and mvout----
         mvin_DRAM_addr(m.NewBvState("mvin_DRAM_addr",64)),
         mvin_dest_addr(m.NewBvState("mvin_dest_addr",32)),
         mvin_col_num(m.NewBvState("mvin_col_num",16)),
         mvin_row_num(m.NewBvState("mvin_row_num",16)),
         mvin_destination(m.NewBvState("mvin_destination",1)),
+        mvout_DRAM_addr(m.NewBvState("mvout_DRAM_addr",64)),
+        mvout_sour_addr(m.NewBvState("mvout_sour_addr",32)),
+        mvout_col_num(m.NewBvState("mvout_col_num",16)),
+        mvout_row_num(m.NewBvState("mvout_row_num",16)),
+        mvout_source(m.NewBvState("mvout_source",1)),
         start_row(m.NewBvState("start_row",16)),
         start_chunk(m.NewBvState("start_chunk",16)),
         done(m.NewBoolState("done")),
@@ -49,8 +54,8 @@ namespace gemmini{
         dest_row(m.NewBvState("dest_row", 32)),
         dest_col(m.NewBvState("dest_col", 32)), 
         DRAM(m.NewMemState("DRAM", 64, 32)),
-        scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * Cfg.input_bits())),
-        accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * Cfg.acc_bits()))
+        scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * Cfg.input_bits)),
+        accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * Cfg.acc_bits))
         {
             // ---------- Store config ----------
             _Cfg = Cfg;
@@ -68,7 +73,15 @@ namespace gemmini{
     
     void Gemmini::AddInstructions(){
 
+        // Make this more flexible
+        constexpr size_t DIM = 16;
+        constexpr size_t INPUT_BITS = _Cfg.input_bits;
+        constexpr size_t ACC_BITS = _Cfg.acc_bits;
+        constexpr size_t INPUT_ROW_BITS = DIM * INPUT_BITS;
+        constexpr size_t ACC_ROW_BITS = DIM * ACC_BITS;
+        
         {
+            
             // Data Movement
             // rs1 is DRAM address
             {
@@ -79,15 +92,15 @@ namespace gemmini{
                     InstrRef instr = m.NewInstr("mvin");
                     auto decode = mvin;
                     instr.SetDecode(funct == decode);
-                    auto DRAM_addr = Extract(rs1, 63,0);
-                    auto dest_addr = Extract(rs2, 31, 0);
-                    auto col_num = Extract(rs2, 47, 32);
-                    auto row_num = Extract(rs2, 64, 48);
-                    auto destination = Extract(rs2, 31, 31);
+                    ExprRef DRAM_addr = Extract(rs1, 63,0);
+                    ExprRef dest_addr = Extract(rs2, 31, 0);
+                    ExprRef col_num = Extract(rs2, 47, 32);
+                    ExprRef row_num = Extract(rs2, 63, 48);
+                    ExprRef destination = Extract(rs2, 31, 31);
 
                     instr.SetUpdate(start_row, BvConst(0, 16));
                     instr.SetUpdate(start_chunk, BvConst(0, 16));
-                    instr.SetUpdate(dma_done, BoolConst(false));
+                    instr.SetUpdate(done, BoolConst(false));
                     instr.SetUpdate(mvin_DRAM_addr, DRAM_addr);
                     instr.SetUpdate(mvin_dest_addr, dest_addr);
                     instr.SetUpdate(mvin_row_num, row_num);
@@ -97,15 +110,13 @@ namespace gemmini{
 
                 // mvin step
                 {
-                    InstrRef instr = m.NewInstr("mvin_step_chunk");
+                    InstrRef instr = m.NewInstr("mvin_step");
                     instr.SetDecode((funct == mvin) & !done);
-                    
+
                     // Total chunks per row
-                    auto total_chunks = (col_num + BvConst(DIM - 1, 16)) / BvConst(DIM, 16);
-                    auto row_done = Ite(Uge(start_row,mvin_row_num), SYMB_TRUE, SYMB_FALSE);
-                    auto chunk_done = Ite(Uge(start_chunk,total_chunks), SYMB_TRUE, SYMB_FALSE);
-                    auto all_done = Ite((row_done & chunk_done), SYMB_TRUE, SYMB_FALSE);
+                    auto total_chunks = (mvin_col_num + BvConst(DIM - 1, 16)) / BvConst(DIM, 16);
                     
+                    // Determine how many columns to process per chunk
                     auto col_start = start_chunk * BvConst(DIM, 16);
                     auto chunk_end = Ite((col_start + BvConst(DIM, 16)) <= mvin_col_num,
                                         col_start + BvConst(DIM, 16),
@@ -113,50 +124,47 @@ namespace gemmini{
                     auto chunk_width = chunk_end - col_start;
                     
                     auto chunk_valid = Ite(Ult(col_start,mvin_col_num), SYMB_TRUE, SYMB_FALSE);
-                    auto should_transfer = Ite(!all_done & chunk_valid, SYMB_TRUE, SYMB_FALSE);
+                    auto should_transfer = Ite(!done & chunk_valid, SYMB_TRUE, SYMB_FALSE);
                     
-                    // Get the row
-                    auto dram_base = mvin_DRAM_addr + (start_row * memory_stride_mvin) + (start_chunk * BvConst(DIM,64));
-                    auto dest_base = mvin_dest_addr + (start_row) + (start_chunk * private_stride);
+                    auto dram_base = mvin_DRAM_addr + (ZExt(start_row,64) * memory_stride_mvin) + (ZExt(start_chunk, 64) * BvConst(DIM,64));
+                    auto dest_base = mvin_dest_addr + (ZExt(start_row, 32)) + (ZExt(start_chunk, 32) * ZExt(private_stride, 32));
                     
                     auto current_row_input = scratchpad.Load(dest_base);
                     auto current_row_acc = accumulator.Load(dest_base);
-
-                    // Build new row from DRAM (or load existing)
-                    auto new_row_input = current_row_input;  // Start with current row
-                    auto new_row_acc = current_row_acc;
-
+                    ExprRef new_row_input_concat = BvConst(0, INPUT_ROW_BITS);
+                    ExprRef new_row_acc_concat = BvConst(0, ACC_ROW_BITS);
+                    
                     for (size_t elem = 0; elem < DIM; elem++) {
                         auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
                         auto should_update = Ite(should_transfer & elem_valid, SYMB_TRUE, SYMB_FALSE);
-                        
-                        // Load element from DRAM
-                        auto dram_elem_addr = dram_base + BvConst(elem, 64);
+
+                        auto dram_elem_addr = dram_base + BvConst(elem, 64); // multiply by bitwidth?
                         auto load_elem = DRAM.Load(dram_elem_addr);
                         
-                        // Create mask for this element
-                        auto elem_mask_input = BvConst(((1ULL << _Cfg.input_bits()) - 1) << (elem * _Cfg.input_bits()), DIM * _Cfg.input_bits());
-                        auto elem_mask_acc = BvConst(((1ULL << _Cfg.acc_bits()) - 1) << (elem * _Cfg.acc_bits()), DIM * _Cfg.acc_bits());
+                        auto load_elem_input = Extract(load_elem, INPUT_BITS - 1, 0);
+                        auto load_elem_acc = Extract(load_elem, ACC_BITS - 1, 0);
                         
-                        // Clear the element's bits in the new row
-                        auto row_cleared_input = new_row & ~elem_mask_input;
-                        auto row_cleared_acc= new_row & ~elem_mask_acc;
-                        
-                        // Insert the new element
-                        auto shifted_elem_input = ZExt(load_elem, DIM * _Cfg.input_bits()) << (elem * _Cfg.input_bits());
-                        auto shifted_elem_acc = ZExt(load_elem, DIM * _Cfg.acc_bits()) << (elem * _Cfg.acc_bits());
-                        auto row_updated_input = row_cleared | shifted_elem_input;
-                        auto row_updated_acc = row_cleared | shifted_elem_acc;
-                        
-                        // Conditionally update
-                        new_row_input = Ite(should_update, row_updated_input, new_row_input);
-                        new_row_acc = Ite(should_update, row_updated_acc, new_row_acc);
+                        if (elem == 0) {
+                            new_row_input_concat = load_elem_input;
+                            new_row_acc_concat = load_elem_acc;
+                        } else {
+                            auto new_elem_input = Concat(load_elem_input, new_row_input_concat);
+                            auto new_elem_acc = Concat(load_elem_acc, new_row_acc_concat);
+                            
+                            auto old_padded_input = ZExt(new_row_input_concat, INPUT_BITS + (elem * INPUT_BITS));
+                            auto old_padded_acc = ZExt(new_row_acc_concat, ACC_BITS + (elem * ACC_BITS));
+                            
+                            new_row_input_concat = Ite(should_update, new_elem_input, old_padded_input);
+                            new_row_acc_concat = Ite(should_update, new_elem_acc, old_padded_acc);
+                        }
                     }
-                    
-                    auto store_sp = scratchpad.Store(dest_base, new_row_input);
-                    auto store_acc = accumulator.Store(dest_base, new_row_acc);
-                    instr.SetUpdate(scratchpad, Ite(should_transfer & mvin_destination == BvConst(0, 1), final_sp_store, scratchpad));
-                    instr.SetUpdate(accumulator, Ite(should_transfer & mvin_destination == BvConst(1, 1), final_acc_store, accumulator));
+
+                    // Decide whether to update or not
+                    auto store_sp = scratchpad.Store(dest_base, new_row_input_concat);
+                    auto store_acc_input = accumulator.Store(dest_base, ZExt(new_row_input_concat, ACC_ROW_BITS));
+                    auto store_acc = accumulator.Store(dest_base, new_row_acc_concat);
+                    instr.SetUpdate(scratchpad, Ite(should_transfer & (mvin_destination == BvConst(0, 1)), store_sp, scratchpad));
+                    instr.SetUpdate(accumulator, Ite(should_transfer & (mvin_destination == BvConst(1, 1)), Ite(acc_type == BvConst(0,1), store_acc, store_acc_input), accumulator));
                     
                     // Advance chunk counter
                     auto next_chunk = start_chunk + BvConst(1, 16);
@@ -164,11 +172,11 @@ namespace gemmini{
                     auto new_chunk = Ite(chunk_overflow, BvConst(0, 16), next_chunk);
                     auto new_row = Ite(chunk_overflow, start_row + BvConst(1, 16), start_row);
                     
-                    instr.SetUpdate(start_chunk, Ite(!all_done, new_chunk, start_chunk));
-                    instr.SetUpdate(start_row, Ite(!all_done, new_row, start_row));
+                    instr.SetUpdate(start_chunk, Ite(!done, new_chunk, start_chunk));
+                    instr.SetUpdate(start_row, Ite(!done, new_row, start_row));
                     
                     // Set done flag when all done
-                    auto all_rows_done = Ite(Uge(new_row,mvin_row_num), SYMB_TRUE, SYMB_FALSE);
+                    auto all_rows_done = Uge(new_row, mvin_row_num);
                     auto done_after = Ite(chunk_overflow & all_rows_done, SYMB_TRUE, SYMB_FALSE);
                     instr.SetUpdate(done, Ite(done_after, BoolConst(true), done));
                 }
@@ -177,45 +185,46 @@ namespace gemmini{
                 // TODO make sure that config and done resets
                 {
                     InstrRef instr = m.NewInstr("mvin_end");
-                    instr.SetDecode(m.And(m.Eq(funct, mvin), dma_done));
-                    
-                    // Optional: any cleanup or signaling
-                    // For now, just stay in done state
-                
+                    instr.SetDecode(funct == mvin & done);
                 }
             }
 
             {
-                // mvout
-                InstrRef instr = m.NewInstr("mvout");
-                auto decode = mvout;
-                instr.SetDecode(funct == decode);
-                auto DRAM_addr = Extract(rs1, 63,0);
-                auto scratchpad_addr = Extract(rs2, 31, 0);
-                auto col_num = Extract(rs2, 47, 32);
-                auto row_num = Extract(rs2, 64, 48);
-                auto source = Extract(rs2, 31, 31);
-                size_t i = 0;
-                
-                auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), SYMBOLIC_TRUE, SYMBOLIC_FALSE); 
-                if(checkCond(continue_cond)){
-                    auto dram_addr = DRAM_addr + (BvConst(i,64) * memory_stride_mvin);
-                    auto sour_chunk_addr = scratchpad_addr + BvConst(i,32);
-                    auto source_data = Ite(source == BvConst(0, 1), scratchpad.Load(sour_chunk_addr), accumulator.Load(sour_chunk_addr));
-                    instr.SetUpdate(DRAM, DRAM.Store(dram_addr, source_data));
-                    i++;
+                // mvout start
+                {
+                    InstrRef instr = m.NewInstr("mvout");
+                    auto decode = mvout;
+                    instr.SetDecode(funct == decode);
+                    auto DRAM_addr = Extract(rs1, 63,0);
+                    auto sour_addr = Extract(rs2, 31, 0);
+                    auto col_num = Extract(rs2, 47, 32);
+                    auto row_num = Extract(rs2, 63, 48);
+                    auto source = Extract(rs2, 31, 31);
+
+                    instr.SetUpdate(start_row, BvConst(0, 16));
+                    instr.SetUpdate(start_chunk, BvConst(0, 16));
+                    instr.SetUpdate(done, BoolConst(false));
+                    instr.SetUpdate(mvout_DRAM_addr, DRAM_addr);
+                    instr.SetUpdate(mvout_sour_addr, sour_addr);
+                    instr.SetUpdate(mvout_row_num, row_num);
+                    instr.SetUpdate(mvout_col_num, col_num);
+                    instr.SetUpdate(mvout_source, source);
                 }
-                while(i++){
-                    // Keeps looping i-th row transfer till it equals row_num
-                    auto continue_cond = Ite(Ugt(row_num, BvConst(i,16)), SYMBOLIC_TRUE, SYMBOLIC_FALSE); 
-                    if(!checkCond(continue_cond)){
-                        break;
-                    }
-                    
-                    auto dram_addr = DRAM_addr + (BvConst(i,64) * memory_stride_mvin);
-                    auto sour_chunk_addr = scratchpad_addr + BvConst(i,32);
-                    auto source_data = Ite(source == BvConst(0, 1), scratchpad.Load(sour_chunk_addr), accumulator.Load(sour_chunk_addr));
-                    instr.SetUpdate(DRAM, DRAM.Store(dram_addr, source_data));
+
+                // mvout step
+                {
+                    InstrRef instr = m.NewInstr("mvout_step");
+                    auto decode = mvout;
+                    instr.SetDecode((funct == decode) & !done);
+
+
+                }
+
+                // mvout end
+                {
+                    InstrRef instr = m.NewInstr("mvout_end");
+                    auto decode = mvout;
+                    instr.SetDecode((funct == decode) & done);
                 }
             }
         }

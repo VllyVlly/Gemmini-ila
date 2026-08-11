@@ -71,6 +71,9 @@ void cstr_step(z3::solver &s, ilang::IlaZ3Unroller &u, z3::context &ctx, const i
 // TO_STR converts the ila expression into an evaluated string
 std::string TO_STR(const ilang::ExprRef &ila_expr, int step, ilang::IlaZ3Unroller &u, z3::model &mdl);
 
+// Converts hexadecimal representation to decimal
+std::string HexToDecimalString(const std::string& hex_in);
+
 // PRINT function
 // @brief prints ila_expr in human-readable format
 void PRINT(const ilang::ExprRef &ila_expr, int step, ilang::IlaZ3Unroller &u, z3::model &mdl, std::string label = "");
