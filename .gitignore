@@ -36,3 +36,5 @@ compile_commands.json
 *.cmake
 !CMakeLists.txt
 ILAng/
+
+build-debug/
