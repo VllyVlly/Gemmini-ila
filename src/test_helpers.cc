@@ -14,6 +14,7 @@ void record_failure(const std::string& msg) {
     g_current_failures++;
 }
 
+
 // Helper to constrain an ILA state variable at a specific step
 // Call AFTER unrolling, adds constraint directly to solver
 // step defaults to step 0 (initial step)
@@ -42,6 +43,10 @@ void cstr_step(z3::solver &s, ilang::IlaZ3Unroller &u, z3::context &ctx, const i
     s.add(expr == value_expr);
 }
 
+// Create a 128-bit Z3 expression from two 64-bit halves
+z3::expr bv_val_128(z3::context &ctx, uint64_t high_half, uint64_t low_half) {
+    return z3::concat(ctx.bv_val(high_half, 64), ctx.bv_val(low_half, 64));
+}
 
 std::string TO_STR(const ilang::ExprRef &ila_expr, int step, ilang::IlaZ3Unroller &u, z3::model &mdl) {
     auto expr = u.GetZ3Expr(ila_expr, step);

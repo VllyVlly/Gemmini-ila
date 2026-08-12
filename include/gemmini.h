@@ -227,7 +227,7 @@ namespace gemmini{
             // Make tests
             // Fix the paramater bidwidths
             // Maybe change DRAM to uninterpreted functions
-            // Make sure that mvin accumulator bidwidth type is affected by config_mvin
+            // Test gap between each DRAM element
             
     };
 

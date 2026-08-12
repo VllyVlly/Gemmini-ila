@@ -217,7 +217,45 @@ namespace gemmini{
                     auto decode = mvout;
                     instr.SetDecode((funct == decode) & !done);
 
+                    // Check if need to continue or not
+                    auto continue_row = Ite(start_row < mvout_row_num, SYMB_TRUE, SYMB_FALSE);
 
+                    // Get base address for each row
+                    auto dram_base = mvout_DRAM_addr + (ZExt(start_row,64) * memory_stride_mvout);
+                    auto sour_base = mvout_sour_addr + (ZExt(start_row, 32));
+                    
+                    // Get the row to be transferred
+                    auto current_row_input = scratchpad.Load(sour_base);
+                    auto current_row_acc = accumulator.Load(sour_base);
+                    
+                    
+                    ExprRef dram_next = DRAM;
+
+                    for (size_t elem = 0; elem < DIM; elem++) {
+                        auto dram_elem_addr = dram_base + BvConst(elem, 64);
+
+                        auto elem_input = Extract(current_row_input, (elem + 1) * INPUT_BITS - 1, elem * INPUT_BITS);
+                        auto elem_acc = Extract(current_row_acc, (elem + 1) * ACC_BITS - 1, elem * ACC_BITS);
+
+                        auto update = Ite(BvConst(elem, 16) < mvout_col_num, SYMB_TRUE, SYMB_FALSE);
+
+                        auto select_source = Ite(mvout_source == BvConst(0, 1),
+                                                ZExt(elem_input, 32),
+                                                elem_acc);
+
+                        // Chain off dram_next (the running result), not the raw DRAM state
+                        dram_next = Ite(update & continue_row,
+                                        Store(dram_next, dram_elem_addr, select_source),
+                                        dram_next);
+                    }
+
+                    instr.SetUpdate(DRAM, dram_next);
+
+                    // Go to next row
+                    instr.SetUpdate(start_row, start_row + BvConst(1, 16));
+                    
+                    // If rows are all processed, stop
+                    instr.SetUpdate(done, Ite(!continue_row, BoolConst(true), done));
                 }
 
                 // mvout end
@@ -276,205 +314,202 @@ namespace gemmini{
                 instr.SetUpdate(unpool_col,Extract(rs1, 63, 56));
                 instr.SetUpdate(memory_stride_mvout,Extract(rs2, 63, 0));
             }
-
-            // TODO maybe add config_norm and flush
-            // Need to find funct and behavior
         }
 
         {
-        //     // Core matmul sequence 
-        //     {
-        //         // matmul.preload
-        //         InstrRef instr = m.NewInstr("matmul.preload");
-        //         auto decode = matmul_preload;
-        //         instr.SetDecode(decode);
-        //         auto DB_scratchpad_addr = Extract(rs1, 31, 0);
-        //         auto DB_col = Extract(rs1, 47, 32);
-        //         auto DB_row = Extract(rs1, 63, 48);
-        //         dest_addr = Extract(rs2, 31, 0);
-        //         dest_col = Extract(rs2, 47, 32);
-        //         dest_row = Extract(rs2, 63, 48);
-        //         if (dataflow == BoolConst(false)) { // OS
-        //             auto row_count = 0;
-        //             auto col_count = 0;
-        //             for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
-        //                 auto& sys_row =  sys_array[row_count];
-        //                 for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
-        //                     auto index = BvConst((row_count-1)*DIM + col_count,32);
-        //                     instr.SetUpdate(sys_row[col_count].D_preload_reg, scratchpad.Load(DB_scratchpad_addr+index));
-        //                     col_count++;
-        //                 }
-        //                 row_count++;
-        //             }
-        //         } else { // WS
-        //             auto row_count = 0;
-        //             auto col_count = 0;
-        //             for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
-        //                 auto& sys_row =  sys_array[row_count];
-        //                 for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
-        //                     auto index = BvConst((row_count-1)*DIM + col_count,32);
-        //                     instr.SetUpdate(sys_row[col_count].B_reg, scratchpad.Load(DB_scratchpad_addr+index));
-        //                     col_count++;
-        //                 }
-        //                 row_count++;
-        //             }
-        //         }
-        //     }
+            // Core matmul sequence 
+            {
+                // matmul.preload
+                InstrRef instr = m.NewInstr("matmul.preload");
+                auto decode = matmul_preload;
+                instr.SetDecode(decode);
+                auto DB_scratchpad_addr = Extract(rs1, 31, 0);
+                auto DB_col = Extract(rs1, 47, 32);
+                auto DB_row = Extract(rs1, 63, 48);
+                dest_addr = Extract(rs2, 31, 0);
+                dest_col = Extract(rs2, 47, 32);
+                dest_row = Extract(rs2, 63, 48);
+                if (dataflow == BoolConst(false)) { // OS
+                    auto row_count = 0;
+                    auto col_count = 0;
+                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
+                        auto& sys_row =  sys_array[row_count];
+                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
+                            auto index = BvConst((row_count-1)*DIM + col_count,32);
+                            instr.SetUpdate(sys_row[col_count].D_preload_reg, scratchpad.Load(DB_scratchpad_addr+index));
+                            col_count++;
+                        }
+                        row_count++;
+                    }
+                } else { // WS
+                    auto row_count = 0;
+                    auto col_count = 0;
+                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
+                        auto& sys_row =  sys_array[row_count];
+                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
+                            auto index = BvConst((row_count-1)*DIM + col_count,32);
+                            instr.SetUpdate(sys_row[col_count].B_reg, scratchpad.Load(DB_scratchpad_addr+index));
+                            col_count++;
+                        }
+                        row_count++;
+                    }
+                }
+            }
 
-        //     {
-        //         // matmul.compute.preloaded
-        //         InstrRef instr = m.NewInstr("matmul.compute.preloaded");
-        //         auto decode = matmul_compute_preloaded;
-        //         instr.SetDecode(decode);
-        //         auto A_scratchpad_addr = Extract(rs1, 31, 0);
-        //         auto A_col = Extract(rs1, 47, 32);
-        //         auto A_row = Extract(rs1, 63, 48);
-        //         auto BD_scratchpad_addr = Extract(rs2, 31, 0);
-        //         auto BD_col = Extract(rs2, 47, 32);
-        //         auto BD_row = Extract(rs2, 63, 48);
-        //         // OS C stays in the PE
-        //         // WS C flows down
-        //         if (dataflow == BoolConst(false)) { // OS
-        //             for(size_t cycle = 0; cycle < DIM; cycle++){
-        //                 // i is row, j is col
-        //                 for (size_t i = 0; i < DIM; i++) {
-        //                     for (size_t j = 0; i < DIM; j++) {
-        //                         ExprRef A_in;
-        //                         ExprRef B_in;
-        //                         if(col == 0){
-        //                             A_in = // TODO get address of A
-        //                         } else {
-        //                             A_in = sys_array[i][col-1].A_reg;
-        //                         }
+            {
+                // matmul.compute.preloaded
+                InstrRef instr = m.NewInstr("matmul.compute.preloaded");
+                auto decode = matmul_compute_preloaded;
+                instr.SetDecode(decode);
+                auto A_scratchpad_addr = Extract(rs1, 31, 0);
+                auto A_col = Extract(rs1, 47, 32);
+                auto A_row = Extract(rs1, 63, 48);
+                auto BD_scratchpad_addr = Extract(rs2, 31, 0);
+                auto BD_col = Extract(rs2, 47, 32);
+                auto BD_row = Extract(rs2, 63, 48);
+                // OS C stays in the PE
+                // WS C flows down
+                if (dataflow == BoolConst(false)) { // OS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
 
-        //                         if(row == 0){
-        //                             B_in = // TODO get address of B
-        //                         } else {
-        //                             B_in = sys_array[row-1][col].B_reg;
-        //                         }
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
 
-        //                         sys_array[row][col].A_reg = A_in;
-        //                         sys_array[row][col].B_reg = B_in;
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
 
-        //                         ExprRef D_val = sys_array[row][col].D_preload_reg;
-        //                         auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-        //                         sys_array[row][col].C_reg = product + D_val;
-        //                     }
-        //                 }
-        //             }  
-        //         } else { // WS
-        //             for(size_t cycle = 0; cycle < DIM; cycle++){
-        //                 // i is row, j is col
-        //                 for (size_t i = 0; i < DIM; i++) {
-        //                     for (size_t j = 0; i < DIM; j++) {
-        //                         ExprRef A_in;
-        //                         ExprRef B_in;
-        //                         if(col == 0){
-        //                             A_in = // TODO get address of A
-        //                         } else {
-        //                             A_in = sys_array[i][col-1].A_reg;
-        //                         }
+                                ExprRef D_val = sys_array[row][col].D_preload_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+                            }
+                        }
+                    }  
+                } else { // WS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
 
-        //                         if(row == 0){
-        //                             B_in = // TODO get address of B
-        //                         } else {
-        //                             B_in = sys_array[row-1][col].B_reg;
-        //                         }
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
 
-        //                         sys_array[row][col].A_reg = A_in;
-        //                         sys_array[row][col].B_reg = B_in;
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
 
-        //                         ExprRef D_val = sys_array[row][col].D_preload_reg;
-        //                         auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-        //                         sys_array[row][col].C_reg = product + D_val;
+                                ExprRef D_val = sys_array[row][col].D_preload_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
 
-        //                         if(col < DIM - 1)
-        //                             sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
-        //                         if(row < DIM - 1)
-        //                             sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
+                                if(col < DIM - 1)
+                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
+                                if(row < DIM - 1)
+                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
+                            }
+                        }
+                    }
+                }
+            }
 
-        //     {
-        //         // matmul.compute.accumulated
-        //         InstrRef instr = m.NewInstr("matmul.compute.accumulated");
-        //         auto decode = matmul_compute_accumulated;
-        //         instr.SetDecode(decode);
-        //         // TODO
-        //         auto A_scratchpad_addr = Extract(rs1, 31, 0);
-        //         auto A_col = Extract(rs1, 47, 32);
-        //         auto A_row = Extract(rs1, 63, 48);
-        //         auto BD_scratchpad_addr = Extract(rs2, 31, 0);
-        //         auto BD_col = Extract(rs2, 47, 32);
-        //         auto BD_row = Extract(rs2, 63, 48);
+            {
+                // matmul.compute.accumulated
+                InstrRef instr = m.NewInstr("matmul.compute.accumulated");
+                auto decode = matmul_compute_accumulated;
+                instr.SetDecode(decode);
+                // TODO
+                auto A_scratchpad_addr = Extract(rs1, 31, 0);
+                auto A_col = Extract(rs1, 47, 32);
+                auto A_row = Extract(rs1, 63, 48);
+                auto BD_scratchpad_addr = Extract(rs2, 31, 0);
+                auto BD_col = Extract(rs2, 47, 32);
+                auto BD_row = Extract(rs2, 63, 48);
 
-        //         if (dataflow == BoolConst(false)) { // OS
-        //             for(size_t cycle = 0; cycle < DIM; cycle++){
-        //                 // i is row, j is col
-        //                 for (size_t i = 0; i < DIM; i++) {
-        //                     for (size_t j = 0; i < DIM; j++) {
-        //                         ExprRef A_in;
-        //                         ExprRef B_in;
-        //                         if(col == 0){
-        //                             A_in = // TODO get address of A
-        //                         } else {
-        //                             A_in = sys_array[i][col-1].A_reg;
-        //                         }
+                if (dataflow == BoolConst(false)) { // OS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
 
-        //                         if(row == 0){
-        //                             B_in = // TODO get address of B
-        //                         } else {
-        //                             B_in = sys_array[row-1][col].B_reg;
-        //                         }
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
 
-        //                         sys_array[row][col].A_reg = A_in;
-        //                         sys_array[row][col].B_reg = B_in;
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
 
-        //                         ExprRef D_val = sys_array[row][col].C_reg;
-        //                         auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-        //                         sys_array[row][col].C_reg = product + D_val;
-        //                     }
-        //                 }
-        //             }  
-        //         } else { // WS
-        //             for(size_t cycle = 0; cycle < DIM; cycle++){
-        //                 // i is row, j is col
-        //                 for (size_t i = 0; i < DIM; i++) {
-        //                     for (size_t j = 0; i < DIM; j++) {
-        //                         ExprRef A_in;
-        //                         ExprRef B_in;
-        //                         if(col == 0){
-        //                             A_in = // TODO get address of A
-        //                         } else {
-        //                             A_in = sys_array[i][col-1].A_reg;
-        //                         }
+                                ExprRef D_val = sys_array[row][col].C_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
+                            }
+                        }
+                    }  
+                } else { // WS
+                    for(size_t cycle = 0; cycle < DIM; cycle++){
+                        // i is row, j is col
+                        for (size_t i = 0; i < DIM; i++) {
+                            for (size_t j = 0; i < DIM; j++) {
+                                ExprRef A_in;
+                                ExprRef B_in;
+                                if(col == 0){
+                                    A_in = // TODO get address of A
+                                } else {
+                                    A_in = sys_array[i][col-1].A_reg;
+                                }
 
-        //                         if(row == 0){
-        //                             B_in = // TODO get address of B
-        //                         } else {
-        //                             B_in = sys_array[row-1][col].B_reg;
-        //                         }
+                                if(row == 0){
+                                    B_in = // TODO get address of B
+                                } else {
+                                    B_in = sys_array[row-1][col].B_reg;
+                                }
 
-        //                         sys_array[row][col].A_reg = A_in;
-        //                         sys_array[row][col].B_reg = B_in;
+                                sys_array[row][col].A_reg = A_in;
+                                sys_array[row][col].B_reg = B_in;
 
-        //                         ExprRef D_val = sys_array[row][col].C_reg;
-        //                         auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-        //                         sys_array[row][col].C_reg = product + D_val;
+                                ExprRef D_val = sys_array[row][col].C_reg;
+                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
+                                sys_array[row][col].C_reg = product + D_val;
 
-        //                         if(col < DIM - 1)
-        //                             sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
-        //                         if(row < DIM - 1)
-        //                             sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+                                if(col < DIM - 1)
+                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
+                                if(row < DIM - 1)
+                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         // Note: Loop instructions not included in README, therefore not implemented for now
     }

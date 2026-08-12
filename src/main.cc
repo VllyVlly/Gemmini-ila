@@ -36,20 +36,20 @@ int main() {
 
     gem.AddInstructions();
     
-    // list everything
+    // List architectural states and instructions
     // list_states(gem);
     // list_instrs(gem);
     
-    // instruction unit tests
+    // Instruction unit tests
     test_config_ex(gem);
     test_config_mvin(gem);
     test_config_mvout(gem);
 
     test_mvin(gem);
-    // test_mvout(gem);
+    test_mvout(gem);
     
-    // summary
-    // print_test_summary();
+    // Summary
+    print_test_summary();
 
     return 0;
 }
