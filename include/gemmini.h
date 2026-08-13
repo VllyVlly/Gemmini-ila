@@ -7,14 +7,13 @@ using namespace ilang;
 
 namespace gemmini{
 
-    // TODO CHANGE LATER
+    
     #define RS_WIDTH 64
-
     #define SYMB_TRUE BoolConst(true)
     #define SYMB_FALSE BoolConst(false)
 
-    constexpr int DRAM_ADDR_WIDTH = 32;
-    constexpr int DRAM_DATA_WIDTH = 64;
+    #define DRAM_ADDR_WIDTH 64
+    #define DRAM_DATA_WIDTH 32
     
     // TODO CHANGE LATER
     // For now use 8-bit ints
@@ -29,7 +28,7 @@ namespace gemmini{
     #define matmul_preload BvConst(6,3)
     #define matmul_compute_preloaded BvConst(4,3)
     #define matmul_compute_accumulated BvConst(5,3)
-    // Maybe loop instruction?
+    
 
     enum class DataType : uint64_t {
         INT8 = 8,
@@ -113,27 +112,18 @@ namespace gemmini{
 
     // Systolic array is made up of DIM x DIM PE
     struct PE {
-        ExprRef A_reg;          
-        ExprRef B_reg;           
-        ExprRef D_reg;          
-        ExprRef C_reg_out; 
-        ExprRef C_reg_acc;      
-        ExprRef D_preload_reg; 
-        
-        // Not sure if needed
-        // ExprRef preload_valid;  // Whether D_preload_reg holds valid data
-        // ExprRef accumulate_mode; // 0 = preloaded, 1 = accumulated
+        ExprRef A_reg;              // delay/pipeline register for A
+        ExprRef stationary_reg;     // holds B (WS) or D→accumulating C (OS)
+        ExprRef stationary_next_reg;// double-buffer slot, staged by matmul.preload
+        ExprRef C_reg_out;  
 
         PE(Ila& m, size_t row, size_t col) 
             :A_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_A", INPUT_TYPE_BIT_WIDTH)),
-            B_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_B", INPUT_TYPE_BIT_WIDTH)),
-            D_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_D", INPUT_TYPE_BIT_WIDTH)),
-            C_reg_out(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_C_out", OUTPUT_TYPE_BIT_WIDTH)),
-            C_reg_acc(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_C_acc", ACC_TYPE_BIT_WIDTH)),
-            D_preload_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_D_preload", INPUT_TYPE_BIT_WIDTH))
+            // CHANGE THESE LATER
+            stationary_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat", INPUT_TYPE_BIT_WIDTH)),
+            stationary_next_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat_next", INPUT_TYPE_BIT_WIDTH)),
+            C_reg_out(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_C_out", OUTPUT_TYPE_BIT_WIDTH))
             {};
-        //   accumulate_mode(m.NewBoolState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_accumulate")),
-        //   preload_valid(m.NewBoolState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_preload_valid"))
     };
 
 
@@ -198,7 +188,7 @@ namespace gemmini{
             ExprRef start_chunk;
             ExprRef done;
 
-            // Preload stuff
+            // matmul preload
             ExprRef dest_addr;
             ExprRef dest_row; 
             ExprRef dest_col;
@@ -228,6 +218,8 @@ namespace gemmini{
             // Fix the paramater bidwidths
             // Maybe change DRAM to uninterpreted functions
             // Test gap between each DRAM element
+            // Use DRAM bit width variables for readability
+            // Do README and add better comments
             
     };
 

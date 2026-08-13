@@ -53,7 +53,7 @@ namespace gemmini{
         dest_addr(m.NewBvState("dest_addr", 32)),
         dest_row(m.NewBvState("dest_row", 32)),
         dest_col(m.NewBvState("dest_col", 32)), 
-        DRAM(m.NewMemState("DRAM", 64, 32)),
+        DRAM(m.NewMemState("DRAM", DRAM_ADDR_WIDTH, DRAM_DATA_WIDTH)),
         scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * Cfg.input_bits)),
         accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * Cfg.acc_bits))
         {
@@ -126,7 +126,7 @@ namespace gemmini{
                     auto chunk_valid = Ite(Ult(col_start,mvin_col_num), SYMB_TRUE, SYMB_FALSE);
                     auto should_transfer = Ite(!done & chunk_valid, SYMB_TRUE, SYMB_FALSE);
                     
-                    auto dram_base = mvin_DRAM_addr + (ZExt(start_row,64) * memory_stride_mvin) + (ZExt(start_chunk, 64) * BvConst(DIM,64));
+                    auto dram_base = mvin_DRAM_addr + (ZExt(start_row, DRAM_ADDR_WIDTH) * memory_stride_mvin) + (ZExt(start_chunk, DRAM_ADDR_WIDTH) * BvConst(DIM, DRAM_ADDR_WIDTH));
                     auto dest_base = mvin_dest_addr + (ZExt(start_row, 32)) + (ZExt(start_chunk, 32) * ZExt(private_stride, 32));
                     
                     auto current_row_input = scratchpad.Load(dest_base);
@@ -138,7 +138,7 @@ namespace gemmini{
                         auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
                         auto should_update = Ite(should_transfer & elem_valid, SYMB_TRUE, SYMB_FALSE);
 
-                        auto dram_elem_addr = dram_base + BvConst(elem, 64); // multiply by bitwidth?
+                        auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH); // multiply by bitwidth?
                         auto load_elem = DRAM.Load(dram_elem_addr);
                         
                         auto load_elem_input = Extract(load_elem, INPUT_BITS - 1, 0);
@@ -221,7 +221,7 @@ namespace gemmini{
                     auto continue_row = Ite(start_row < mvout_row_num, SYMB_TRUE, SYMB_FALSE);
 
                     // Get base address for each row
-                    auto dram_base = mvout_DRAM_addr + (ZExt(start_row,64) * memory_stride_mvout);
+                    auto dram_base = mvout_DRAM_addr + (ZExt(start_row, DRAM_ADDR_WIDTH) * memory_stride_mvout);
                     auto sour_base = mvout_sour_addr + (ZExt(start_row, 32));
                     
                     // Get the row to be transferred
@@ -232,7 +232,7 @@ namespace gemmini{
                     ExprRef dram_next = DRAM;
 
                     for (size_t elem = 0; elem < DIM; elem++) {
-                        auto dram_elem_addr = dram_base + BvConst(elem, 64);
+                        auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH);
 
                         auto elem_input = Extract(current_row_input, (elem + 1) * INPUT_BITS - 1, elem * INPUT_BITS);
                         auto elem_acc = Extract(current_row_acc, (elem + 1) * ACC_BITS - 1, elem * ACC_BITS);
@@ -240,8 +240,8 @@ namespace gemmini{
                         auto update = Ite(BvConst(elem, 16) < mvout_col_num, SYMB_TRUE, SYMB_FALSE);
 
                         auto select_source = Ite(mvout_source == BvConst(0, 1),
-                                                ZExt(elem_input, 32),
-                                                elem_acc);
+                                                ZExt(elem_input, DRAM_DATA_WIDTH), 
+                                                elem_acc); // Maybe also ZExt?
 
                         // Chain off dram_next (the running result), not the raw DRAM state
                         dram_next = Ite(update & continue_row,
@@ -323,37 +323,27 @@ namespace gemmini{
                 InstrRef instr = m.NewInstr("matmul.preload");
                 auto decode = matmul_preload;
                 instr.SetDecode(decode);
-                auto DB_scratchpad_addr = Extract(rs1, 31, 0);
-                auto DB_col = Extract(rs1, 47, 32);
-                auto DB_row = Extract(rs1, 63, 48);
-                dest_addr = Extract(rs2, 31, 0);
-                dest_col = Extract(rs2, 47, 32);
-                dest_row = Extract(rs2, 63, 48);
-                if (dataflow == BoolConst(false)) { // OS
-                    auto row_count = 0;
-                    auto col_count = 0;
-                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
-                        auto& sys_row =  sys_array[row_count];
-                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
-                            auto index = BvConst((row_count-1)*DIM + col_count,32);
-                            instr.SetUpdate(sys_row[col_count].D_preload_reg, scratchpad.Load(DB_scratchpad_addr+index));
-                            col_count++;
-                        }
-                        row_count++;
-                    }
-                } else { // WS
-                    auto row_count = 0;
-                    auto col_count = 0;
-                    for (size_t i = BvConst(0,16); Ule(i, DB_row); i += BvConst(1,16)) {
-                        auto& sys_row =  sys_array[row_count];
-                        for (size_t j = BvConst(0,16); Ule(j, DB_col); j += BvConst(1,16)) {
-                            auto index = BvConst((row_count-1)*DIM + col_count,32);
-                            instr.SetUpdate(sys_row[col_count].B_reg, scratchpad.Load(DB_scratchpad_addr+index));
-                            col_count++;
-                        }
-                        row_count++;
+                auto source_addr = Extract(rs1, 31, 0);
+                auto source_col = Extract(rs1, 47, 32);
+                auto source_row = Extract(rs1, 63, 48);
+                instr.SetUpdate(dest_addr, Extract(rs2, 31, 0));
+                instr.SetUpdate(dest_col, Extract(rs2, 47, 32));
+                instr.SetUpdate(dest_row, Extract(rs2, 63, 48));
+                
+                for (size_t i = 0; i < DIM; i++) {
+                    auto& sys_row =  sys_array[i];
+                    for (size_t j = 0; j < DIM; j++) {
+                        auto row_index = BvConst(i,32);
+                        auto row_sp = scratchpad.Load(source_addr + row_index);
+                        auto row_acc = accumulator.Load(source_addr + row_index);
+                        auto elem_sp = Extract(row_sp, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
+                        auto elem_acc = Extract(row_acc, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
+                        auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), elem_sp, elem_acc);
+                        auto should_transfer = Ite((i < source_row) & (j < source_col), SYMB_TRUE, SYMB_FALSE);
+                        instr.SetUpdate(sys_row[j]->stationary_reg, Ite(should_transfer, preload_elem, sys_row[j]->stationary_reg));
                     }
                 }
+                
             }
 
             {
