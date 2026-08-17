@@ -95,8 +95,7 @@ void print_test_summary();
 
 // Gemmini helper functions
 uint64_t build_mvin_rs2(uint32_t addr, uint16_t rows, uint16_t cols);
-uint64_t build_preload_rs1(uint32_t addr, uint16_t rows, uint16_t cols);
-uint64_t build_preload_rs2(uint32_t addr, uint16_t rows, uint16_t cols);
+uint64_t build_preload_rs(uint32_t addr, uint16_t rows, uint16_t cols);
 
 }  // namespace gemmini
 

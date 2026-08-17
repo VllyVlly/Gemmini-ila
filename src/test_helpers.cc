@@ -223,17 +223,12 @@ uint64_t build_mvin_rs2(uint32_t addr, uint16_t rows, uint16_t cols) {
 }
 
 // Build rs1 for matmul.preload: address + rows + columns
-uint64_t build_preload_rs1(uint32_t addr, uint16_t rows, uint16_t cols) {
-    uint64_t rs1 = 0;
-    rs1 |= addr;                          // Bits 31:0
-    rs1 |= (uint64_t)cols << 32;          // Bits 47:32
-    rs1 |= (uint64_t)rows << 48;          // Bits 63:48
-    return rs1;
-}
-
-// Build rs2 for matmul.preload: address + rows + columns
-uint64_t build_preload_rs2(uint32_t addr, uint16_t rows, uint16_t cols) {
-    return build_preload_rs1(addr, rows, cols); // Same encoding
+uint64_t build_preload_rs(uint32_t addr, uint16_t rows, uint16_t cols) {
+    uint64_t rs = 0;
+    rs |= addr;                          // Bits 31:0
+    rs |= (uint64_t)cols << 32;          // Bits 47:32
+    rs |= (uint64_t)rows << 48;          // Bits 63:48
+    return rs;
 }
 
 }  // namespace gemmini

@@ -51,8 +51,9 @@ namespace gemmini{
         done(m.NewBoolState("done")),
         // ---------- Extra for preload ----------
         dest_addr(m.NewBvState("dest_addr", 32)),
-        dest_row(m.NewBvState("dest_row", 32)),
-        dest_col(m.NewBvState("dest_col", 32)), 
+        dest_row(m.NewBvState("dest_row", 16)),
+        dest_col(m.NewBvState("dest_col", 16)), 
+        // ---------- Memory states --------------
         DRAM(m.NewMemState("DRAM", DRAM_ADDR_WIDTH, DRAM_DATA_WIDTH)),
         scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * Cfg.input_bits)),
         accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * Cfg.acc_bits))
@@ -73,12 +74,12 @@ namespace gemmini{
     
     void Gemmini::AddInstructions(){
 
-        // Make this more flexible
-        constexpr size_t DIM = 16;
-        constexpr size_t INPUT_BITS = _Cfg.input_bits;
-        constexpr size_t ACC_BITS = _Cfg.acc_bits;
-        constexpr size_t INPUT_ROW_BITS = DIM * INPUT_BITS;
-        constexpr size_t ACC_ROW_BITS = DIM * ACC_BITS;
+        const size_t DIM = _Cfg.DIM;
+        const size_t INPUT_BITS = _Cfg.input_bits;
+        const size_t ACC_BITS = _Cfg.acc_bits;
+        const size_t OUTPUT_BITS = _Cfg.output_bits;
+        const size_t INPUT_ROW_BITS = DIM * INPUT_BITS;
+        const size_t ACC_ROW_BITS = DIM * ACC_BITS;
         
         {
             
@@ -322,7 +323,7 @@ namespace gemmini{
                 // matmul.preload
                 InstrRef instr = m.NewInstr("matmul.preload");
                 auto decode = matmul_preload;
-                instr.SetDecode(decode);
+                instr.SetDecode(funct == decode);
                 auto source_addr = Extract(rs1, 31, 0);
                 auto source_col = Extract(rs1, 47, 32);
                 auto source_row = Extract(rs1, 63, 48);
@@ -338,167 +339,168 @@ namespace gemmini{
                         auto row_acc = accumulator.Load(source_addr + row_index);
                         auto elem_sp = Extract(row_sp, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
                         auto elem_acc = Extract(row_acc, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
-                        auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), elem_sp, elem_acc);
-                        auto should_transfer = Ite((i < source_row) & (j < source_col), SYMB_TRUE, SYMB_FALSE);
+                        auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), ZExt(elem_sp, ACC_BITS), elem_acc);
+                        auto should_transfer = Ite((BvConst(i, 16) < source_row) & (BvConst(j, 16) < source_col), SYMB_TRUE, SYMB_FALSE);
                         instr.SetUpdate(sys_row[j]->stationary_reg, Ite(should_transfer, preload_elem, sys_row[j]->stationary_reg));
                     }
                 }
                 
             }
 
-            {
-                // matmul.compute.preloaded
-                InstrRef instr = m.NewInstr("matmul.compute.preloaded");
-                auto decode = matmul_compute_preloaded;
-                instr.SetDecode(decode);
-                auto A_scratchpad_addr = Extract(rs1, 31, 0);
-                auto A_col = Extract(rs1, 47, 32);
-                auto A_row = Extract(rs1, 63, 48);
-                auto BD_scratchpad_addr = Extract(rs2, 31, 0);
-                auto BD_col = Extract(rs2, 47, 32);
-                auto BD_row = Extract(rs2, 63, 48);
-                // OS C stays in the PE
-                // WS C flows down
-                if (dataflow == BoolConst(false)) { // OS
-                    for(size_t cycle = 0; cycle < DIM; cycle++){
-                        // i is row, j is col
-                        for (size_t i = 0; i < DIM; i++) {
-                            for (size_t j = 0; i < DIM; j++) {
-                                ExprRef A_in;
-                                ExprRef B_in;
-                                if(col == 0){
-                                    A_in = // TODO get address of A
-                                } else {
-                                    A_in = sys_array[i][col-1].A_reg;
-                                }
+            // {
+            //     // matmul.compute.preloaded
+            //     InstrRef instr = m.NewInstr("matmul.compute.preloaded");
+            //     auto decode = matmul_compute_preloaded;
+            //     instr.SetDecode(funct == decode);
+            //     auto A_scratchpad_addr = Extract(rs1, 31, 0);
+            //     auto A_col = Extract(rs1, 47, 32);
+            //     auto A_row = Extract(rs1, 63, 48);
+            //     auto BD_scratchpad_addr = Extract(rs2, 31, 0);
+            //     auto BD_col = Extract(rs2, 47, 32);
+            //     auto BD_row = Extract(rs2, 63, 48);
 
-                                if(row == 0){
-                                    B_in = // TODO get address of B
-                                } else {
-                                    B_in = sys_array[row-1][col].B_reg;
-                                }
+            //     auto dest_type = Extract(dest_addr, 31, 0); // Determine C is written to
 
-                                sys_array[row][col].A_reg = A_in;
-                                sys_array[row][col].B_reg = B_in;
+            //     // OS C stays in the PE
+            //     // WS C flows down
+            //     // TODO MISCELLANEOUS DETAILS IN CONFIG
+            //     for (size_t cycle = 0; cycle < DIM; cycle++) {
+            //         for (size_t row = 0; row < DIM; row++) {
+            //             for (size_t col = 0; col < DIM; col++) {
+            //                 auto in_bounds = (BvConst(row, 32) < A_row) & (BvConst(col, 32) < BD_col);
 
-                                ExprRef D_val = sys_array[row][col].D_preload_reg;
-                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-                                sys_array[row][col].C_reg = product + D_val;
-                            }
-                        }
-                    }  
-                } else { // WS
-                    for(size_t cycle = 0; cycle < DIM; cycle++){
-                        // i is row, j is col
-                        for (size_t i = 0; i < DIM; i++) {
-                            for (size_t j = 0; i < DIM; j++) {
-                                ExprRef A_in;
-                                ExprRef B_in;
-                                if(col == 0){
-                                    A_in = // TODO get address of A
-                                } else {
-                                    A_in = sys_array[i][col-1].A_reg;
-                                }
+            //                 ExprRef A_in = BvConst(0, INPUT_BITS);
+            //                 ExprRef B_in = BvConst(0, INPUT_BITS);
 
-                                if(row == 0){
-                                    B_in = // TODO get address of B
-                                } else {
-                                    B_in = sys_array[row-1][col].B_reg;
-                                }
+            //                 // A streams in horizontally
+            //                 if (col == 0) {
+            //                     A_in = Extract(scratchpad.Load(A_scratchpad_addr + BvConst(row, 32)),
+            //                                     (col + 1) * INPUT_BITS - 1,
+            //                                     col * INPUT_BITS);
+            //                 } else {
+            //                     A_in = sys_array[row][col-1]->A_reg;
+            //                 }
 
-                                sys_array[row][col].A_reg = A_in;
-                                sys_array[row][col].B_reg = B_in;
+            //                 // moving operand streams in vertically: B (OS) or D (WS)
+            //                 if (row == 0) {
+            //                     B_in = Extract(scratchpad.Load(BD_scratchpad_addr + BvConst(col, 32)),
+            //                                     (row + 1) * INPUT_BITS - 1,
+            //                                     row * INPUT_BITS);
+            //                 } else {
+            //                     B_in = sys_array[row-1][col]->B_reg;
+            //                 }
 
-                                ExprRef D_val = sys_array[row][col].D_preload_reg;
-                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-                                sys_array[row][col].C_reg = product + D_val;
+            //                 instr.SetUpdate(sys_array[row][col]->A_reg, Ite(in_bounds, A_in, sys_array[row][col]->A_reg));
+            //                 instr.SetUpdate(sys_array[row][col]->B_reg, Ite(in_bounds, B_in, sys_array[row][col]->B_reg));
 
-                                if(col < DIM - 1)
-                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
-                                if(row < DIM - 1)
-                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
-                            }
-                        }
-                    }
-                }
-            }
+            //                 auto product = ZExt(sys_array[row][col]->A_reg, ACC_BITS) *
+            //                                 ZExt(sys_array[row][col]->B_reg, ACC_BITS);
 
-            {
-                // matmul.compute.accumulated
-                InstrRef instr = m.NewInstr("matmul.compute.accumulated");
-                auto decode = matmul_compute_accumulated;
-                instr.SetDecode(decode);
-                // TODO
-                auto A_scratchpad_addr = Extract(rs1, 31, 0);
-                auto A_col = Extract(rs1, 47, 32);
-                auto A_row = Extract(rs1, 63, 48);
-                auto BD_scratchpad_addr = Extract(rs2, 31, 0);
-                auto BD_col = Extract(rs2, 47, 32);
-                auto BD_row = Extract(rs2, 63, 48);
+            //                 auto os_mode = (dataflow == BoolConst(false));
 
-                if (dataflow == BoolConst(false)) { // OS
-                    for(size_t cycle = 0; cycle < DIM; cycle++){
-                        // i is row, j is col
-                        for (size_t i = 0; i < DIM; i++) {
-                            for (size_t j = 0; i < DIM; j++) {
-                                ExprRef A_in;
-                                ExprRef B_in;
-                                if(col == 0){
-                                    A_in = // TODO get address of A
-                                } else {
-                                    A_in = sys_array[i][col-1].A_reg;
-                                }
+            //                 // --- OS: accumulate in place ---
+            //                 auto stat_updated = sys_array[row][col]->stationary_reg + product;
+            //                 instr.SetUpdate(sys_array[row][col]->stationary_reg,
+            //                                 Ite(os_mode & in_bounds, stat_updated, sys_array[row][col]->stationary_reg));
+            //                 auto c_os = Extract(stat_updated, OUTPUT_BITS-1, 0);
 
-                                if(row == 0){
-                                    B_in = // TODO get address of B
-                                } else {
-                                    B_in = sys_array[row-1][col].B_reg;
-                                }
+            //                 // --- WS: partial sum flows DOWN the column, picking up a term at each PE ---
+            //                 ExprRef psum_in = BvConst(0, ACC_BITS);
+            //                 if (row == 0) {
+            //                     // top of column: partial sum starts from D, loaded from the scratchpad,
+            //                     // same horizontal index (col) as B, since D shares B's memory layout in WS
+            //                     psum_in = ZExt(Extract(scratchpad.Load(BD_scratchpad_addr + BvConst(col, 32)),
+            //                                             (row + 1) * INPUT_BITS - 1, row * INPUT_BITS),
+            //                                             ACC_BITS);
+            //                 } else {
+            //                     // every other row: pick up the sum the PE ABOVE just produced
+            //                     psum_in = ZExt(sys_array[row-1][col]->C_reg_out, ACC_BITS);
+            //                 }
+            //                 auto c_ws = Extract(product + psum_in, OUTPUT_BITS-1, 0);
 
-                                sys_array[row][col].A_reg = A_in;
-                                sys_array[row][col].B_reg = B_in;
+            //                 instr.SetUpdate(sys_array[row][col]->C_reg_out,
+            //                                 Ite(in_bounds, Ite(os_mode, c_os, c_ws), sys_array[row][col]->C_reg_out));
+            //             }
+            //         }
+            //     }
+            // }
+        
 
-                                ExprRef D_val = sys_array[row][col].C_reg;
-                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-                                sys_array[row][col].C_reg = product + D_val;
-                            }
-                        }
-                    }  
-                } else { // WS
-                    for(size_t cycle = 0; cycle < DIM; cycle++){
-                        // i is row, j is col
-                        for (size_t i = 0; i < DIM; i++) {
-                            for (size_t j = 0; i < DIM; j++) {
-                                ExprRef A_in;
-                                ExprRef B_in;
-                                if(col == 0){
-                                    A_in = // TODO get address of A
-                                } else {
-                                    A_in = sys_array[i][col-1].A_reg;
-                                }
+            // {
+            //     // matmul.compute.accumulated
+            //     InstrRef instr = m.NewInstr("matmul.compute.accumulated");
+            //     auto decode = matmul_compute_accumulated;
+            //     instr.SetDecode(funct == decode);
+            //     // TODO
+            //     auto A_scratchpad_addr = Extract(rs1, 31, 0);
+            //     auto A_col = Extract(rs1, 47, 32);
+            //     auto A_row = Extract(rs1, 63, 48);
+            //     auto BD_scratchpad_addr = Extract(rs2, 31, 0);
+            //     auto BD_col = Extract(rs2, 47, 32);
+            //     auto BD_row = Extract(rs2, 63, 48);
 
-                                if(row == 0){
-                                    B_in = // TODO get address of B
-                                } else {
-                                    B_in = sys_array[row-1][col].B_reg;
-                                }
+                
+                
+            //     for (size_t cycle = 0; cycle < DIM; cycle++) {
+            //         for (size_t row = 0; row < DIM; row++) {
+            //             for (size_t col = 0; col < DIM; col++) {
+            //                 auto in_bounds = (BvConst(row, 32) < A_row) & (BvConst(col, 32) < BD_col);
 
-                                sys_array[row][col].A_reg = A_in;
-                                sys_array[row][col].B_reg = B_in;
+            //                 ExprRef A_in = BvConst(0, INPUT_BITS);
+            //                 ExprRef B_in = BvConst(0, INPUT_BITS);
 
-                                ExprRef D_val = sys_array[row][col].C_reg;
-                                auto product = sys_array[row][col].A_reg * sys_array[row][col].B_reg;
-                                sys_array[row][col].C_reg = product + D_val;
+            //                 // A streams in horizontally
+            //                 if (col == 0) {
+            //                     A_in = Extract(scratchpad.Load(A_scratchpad_addr + BvConst(row, 32)),
+            //                                     (col + 1) * INPUT_BITS - 1,
+            //                                     col * INPUT_BITS);
+            //                 } else {
+            //                     A_in = sys_array[row][col-1]->A_reg;
+            //                 }
 
-                                if(col < DIM - 1)
-                                    sys_array[row][col+1].A_reg = sys_array[row][col].A_reg;
-                                if(row < DIM - 1)
-                                    sys_array[row+1][col].B_reg = sys_array[row][col].B_reg;
-                            }
-                        }
-                    }
-                }
-            }
+            //                 // moving operand streams in vertically: B (OS) or D (WS)
+            //                 if (row == 0) {
+            //                     B_in = Extract(scratchpad.Load(BD_scratchpad_addr + BvConst(col, 32)),
+            //                                     (row + 1) * INPUT_BITS - 1,
+            //                                     row * INPUT_BITS);
+            //                 } else {
+            //                     B_in = sys_array[row-1][col]->B_reg;
+            //                 }
+
+            //                 instr.SetUpdate(sys_array[row][col]->A_reg, Ite(in_bounds, A_in, sys_array[row][col]->A_reg));
+            //                 instr.SetUpdate(sys_array[row][col]->B_reg, Ite(in_bounds, B_in, sys_array[row][col]->B_reg));
+
+            //                 auto product = ZExt(sys_array[row][col]->A_reg, ACC_BITS) *
+            //                                 ZExt(sys_array[row][col]->B_reg, ACC_BITS);
+
+            //                 auto os_mode = (dataflow == BoolConst(false));
+
+            //                 // --- OS: accumulate in place ---
+            //                 auto stat_updated = sys_array[row][col]->stationary_reg + product;
+            //                 instr.SetUpdate(sys_array[row][col]->stationary_reg,
+            //                                 Ite(os_mode & in_bounds, stat_updated, sys_array[row][col]->stationary_reg));
+            //                 auto c_os = Extract(stat_updated, OUTPUT_BITS-1, 0);
+
+            //                 // --- WS: partial sum flows DOWN the column, picking up a term at each PE ---
+            //                 ExprRef psum_in = BvConst(0, ACC_BITS);
+            //                 if (row == 0) {
+            //                     // top of column: partial sum starts from D, loaded from the scratchpad,
+            //                     // same horizontal index (col) as B, since D shares B's memory layout in WS
+            //                     psum_in = ZExt(Extract(scratchpad.Load(BD_scratchpad_addr + BvConst(col, 32)),
+            //                                             (row + 1) * INPUT_BITS - 1, row * INPUT_BITS),
+            //                                             ACC_BITS);
+            //                 } else {
+            //                     // every other row: pick up the sum the PE ABOVE just produced
+            //                     psum_in = ZExt(sys_array[row-1][col]->C_reg_out, ACC_BITS);
+            //                 }
+            //                 auto c_ws = product + psum_in;
+
+            //                 instr.SetUpdate(sys_array[row][col]->C_reg_out,
+            //                                 Ite(in_bounds, Ite(os_mode, c_os, c_ws), sys_array[row][col]->C_reg_out));
+            //             }
+            //         }
+            //     }
+            // }
         }
 
         // Note: Loop instructions not included in README, therefore not implemented for now
@@ -506,6 +508,5 @@ namespace gemmini{
 
     
 
-    }
-
 }
+

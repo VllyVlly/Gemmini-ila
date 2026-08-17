@@ -19,10 +19,10 @@ void test_config_ex(Gemmini& gem){
         uint64_t rs1_val = 0;
         rs1_val |= 0;                    // bits 1:0 = 00 for config_ex
         rs1_val |= (1ULL << 2);          // bit 2 = 1 (WS mode)
-        rs1_val |= (1ULL << 3);          // bit 3 = 1 (ReLU)
+        rs1_val |= (0ULL << 3);          // bit 3 = 1 (No activation)
         rs1_val |= (0ULL << 8);          // bit 8 = 0 (A transpose off)
-        rs1_val |= (1ULL << 9);          // bit 9 = 1 (B transpose on)
-        rs1_val |= (4ULL << 16);         // bits 31:16 = 4 (A stride)
+        rs1_val |= (0ULL << 9);          // bit 9 = 1 (B transpose off)
+        rs1_val |= (1ULL << 16);         // bits 31:16 = 1 (A stride)
         rs1_val |= (0x3F800000ULL << 32); // bits 63:32 = 1.0f
         
         // rs2[31:0] = 8 (right shift)

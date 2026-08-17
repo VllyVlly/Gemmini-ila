@@ -107,21 +107,21 @@ namespace gemmini{
 
         static constexpr size_t input_bits = 8;
         static constexpr size_t acc_bits = 32;
+        static constexpr size_t output_bits = 16;
     };
 
 
     // Systolic array is made up of DIM x DIM PE
-    struct PE {
-        ExprRef A_reg;              // delay/pipeline register for A
-        ExprRef stationary_reg;     // holds B (WS) or D→accumulating C (OS)
-        ExprRef stationary_next_reg;// double-buffer slot, staged by matmul.preload
+    struct PE {            
+        ExprRef A_reg;
+        ExprRef B_reg;
+        ExprRef stationary_reg;     
         ExprRef C_reg_out;  
 
-        PE(Ila& m, size_t row, size_t col) 
-            :A_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_A", INPUT_TYPE_BIT_WIDTH)),
-            // CHANGE THESE LATER
-            stationary_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat", INPUT_TYPE_BIT_WIDTH)),
-            stationary_next_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat_next", INPUT_TYPE_BIT_WIDTH)),
+        PE(Ila& m, size_t row, size_t col):
+            A_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_A", INPUT_TYPE_BIT_WIDTH)),
+            B_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_B", INPUT_TYPE_BIT_WIDTH)),
+            stationary_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat", ACC_TYPE_BIT_WIDTH)),
             C_reg_out(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_C_out", OUTPUT_TYPE_BIT_WIDTH))
             {};
     };
@@ -208,19 +208,22 @@ namespace gemmini{
                 return m;
             }
 
-            // Helper functions
-
-            // TODO 
-            // Add casting helper functions
-            // Model transposer, and controller modules?
-            // Finish data movement instructions first
-            // Make tests
-            // Fix the paramater bidwidths
-            // Maybe change DRAM to uninterpreted functions
-            // Test gap between each DRAM element
-            // Use DRAM bit width variables for readability
-            // Do README and add better comments
+            
             
     };
 
 }
+
+// TODO 
+// Add casting helper functions
+// Model transposer, and controller modules?
+// Finish data movement instructions first
+// Fix the paramater bidwidths
+// Maybe change DRAM to uninterpreted functions
+// Test gap between each DRAM element
+// Use DRAM bit width variables for readability
+// Do README and add better comments
+// Do ReLu
+// Deal with A-stride
+// Deal with rightshift
+// Float multiplication
