@@ -53,8 +53,8 @@ int main() {
     // test_mvin(gem);
     // test_mvout(gem);
 
-    test_matmul_preload(gem_matmul);
-    // test_compute_preload(gem_matmul);
+    // test_matmul_preload(gem_matmul);
+    test_compute_preload(gem_matmul);
     // test_compute_accumulate(gem_matmul);
 
     

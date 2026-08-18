@@ -114,13 +114,13 @@ namespace gemmini{
     // Systolic array is made up of DIM x DIM PE
     struct PE {            
         ExprRef A_reg;
-        ExprRef B_reg;
+        ExprRef B_D_reg;
         ExprRef stationary_reg;     
         ExprRef C_reg_out;  
 
         PE(Ila& m, size_t row, size_t col):
             A_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_A", INPUT_TYPE_BIT_WIDTH)),
-            B_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_B", INPUT_TYPE_BIT_WIDTH)),
+            B_D_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_B_D", INPUT_TYPE_BIT_WIDTH)),
             stationary_reg(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_stat", ACC_TYPE_BIT_WIDTH)),
             C_reg_out(m.NewBvState("PE_" + std::to_string(row) + "_" + std::to_string(col) + "_C_out", OUTPUT_TYPE_BIT_WIDTH))
             {};
@@ -192,6 +192,14 @@ namespace gemmini{
             ExprRef dest_addr;
             ExprRef dest_row; 
             ExprRef dest_col;
+            ExprRef cycle;
+            ExprRef A_addr;
+            ExprRef A_row;
+            ExprRef A_col;
+            ExprRef B_D_addr;
+            ExprRef B_D_row;
+            ExprRef B_D_col;
+            
 
             // Following are input fields for decoding
             ExprRef funct;
@@ -206,11 +214,12 @@ namespace gemmini{
 
             Ila& get(){
                 return m;
-            }
-
-            
-            
+            }      
     };
+
+    // Helper Functions
+
+    ExprRef ResizeBv(const ExprRef& e, unsigned target_width);
 
 }
 
@@ -227,3 +236,4 @@ namespace gemmini{
 // Deal with A-stride
 // Deal with rightshift
 // Float multiplication
+// Refresh states once instructions finish
