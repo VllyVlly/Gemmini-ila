@@ -224,11 +224,7 @@ namespace gemmini{
 }
 
 // TODO 
-// Add casting helper functions
 // Model transposer, and controller modules?
-// Finish data movement instructions first
-// Fix the paramater bidwidths
-// Maybe change DRAM to uninterpreted functions
 // Test gap between each DRAM element
 // Use DRAM bit width variables for readability
 // Do README and add better comments
