@@ -192,14 +192,15 @@ namespace gemmini{
             ExprRef dest_addr;
             ExprRef dest_row; 
             ExprRef dest_col;
-            ExprRef cycle;
+            
             ExprRef A_addr;
             ExprRef A_row;
             ExprRef A_col;
             ExprRef B_D_addr;
             ExprRef B_D_row;
             ExprRef B_D_col;
-            
+
+            ExprRef cycle;
 
             // Following are input fields for decoding
             ExprRef funct;
