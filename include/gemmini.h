@@ -219,7 +219,6 @@ namespace gemmini{
     };
 
     // Helper Functions
-
     ExprRef ResizeBv(const ExprRef& e, unsigned target_width);
 
 }
@@ -234,3 +233,4 @@ namespace gemmini{
 // Deal with rightshift
 // Float multiplication
 // Refresh states once instructions finish
+// Do more integrated tests, several instructions

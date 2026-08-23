@@ -399,7 +399,6 @@ namespace gemmini{
 
                     ExprRef scratchpad_next2 = scratchpad;
                     ExprRef accumulator_next2 = accumulator;
-                    ExprRef ws_write_fires = SYMB_FALSE;
 
                     for (size_t row = 0; row < DIM; row++) {
                         auto is_last_row = Ite(BvConst(row+1,16) == dest_row, SYMB_TRUE, SYMB_FALSE);
@@ -465,7 +464,7 @@ namespace gemmini{
                             auto instance = cycle - row_off - col_off;
                             auto col_valid = is_last_row
                                             & (cycle >= row_off + col_off)
-                                            & (instance < ZExt(dest_row, 32))
+                                            & (instance < ZExt(dest_row, 32)) // Could underflow?
                                             & Ite((BvConst(col,16) < dest_col), SYMB_TRUE, SYMB_FALSE);
                             auto writeAddrCol = dest_addr + instance;
 
@@ -491,9 +490,6 @@ namespace gemmini{
                                                     scratchpad_next2.Store(writeAddrCol, newRowSp), scratchpad_next2);
                             accumulator_next2 = Ite(!os_mode & (destination == BvConst(1, 1)) & col_valid,
                                                     accumulator_next2.Store(writeAddrCol, newRowAcc), accumulator_next2);
-
-                            auto is_last_valid_col = (BvConst(col,16) + BvConst(1,16) == dest_col);
-                            ws_write_fires = ws_write_fires | (col_valid & is_last_valid_col);
                         }
                     }
 
@@ -526,9 +522,6 @@ namespace gemmini{
                     instr.SetUpdate(scratchpad, Ite(os_mode, scratchpad_next, scratchpad_next2));
                     instr.SetUpdate(accumulator, Ite(os_mode, accumulator_next, accumulator_next2));
 
-                    auto ws_write_fires_final = !os_mode & ws_write_fires & (WS_count < dest_row);
-                    instr.SetUpdate(WS_count, Ite(ws_write_fires_final, WS_count + BvConst(1, 16), WS_count));
-
                     instr.SetUpdate(cycle, cycle + BvConst(1, 32));
                 }
                 
@@ -543,8 +536,8 @@ namespace gemmini{
                     instr.SetDecode(funct == decode);
                     // TODO
                     auto A_scratchpad_addr = Extract(rs1, 31, 0);
-                    auto A_col = Extract(rs1, 47, 32);
-                    auto A_row = Extract(rs1, 63, 48);
+                    auto A_col_ = Extract(rs1, 47, 32);
+                    auto A_row_ = Extract(rs1, 63, 48);
                     auto BD_scratchpad_addr = Extract(rs2, 31, 0);
                     auto BD_col = Extract(rs2, 47, 32);
                     auto BD_row = Extract(rs2, 63, 48);
@@ -570,7 +563,6 @@ namespace gemmini{
 
                     ExprRef scratchpad_next2 = scratchpad;
                     ExprRef accumulator_next2 = accumulator;
-                    ExprRef ws_write_fires = SYMB_FALSE;
 
                     for (size_t row = 0; row < DIM; row++) {
                         auto is_last_row = Ite(BvConst(row+1,16) == dest_row, SYMB_TRUE, SYMB_FALSE);
@@ -663,8 +655,6 @@ namespace gemmini{
                             accumulator_next2 = Ite(!os_mode & (destination == BvConst(1, 1)) & col_valid,
                                                     accumulator_next2.Store(writeAddrCol, newRowAcc), accumulator_next2);
 
-                            auto is_last_valid_col = (BvConst(col,16) + BvConst(1,16) == dest_col);
-                            ws_write_fires = ws_write_fires | (col_valid & is_last_valid_col);
                         }
                     }
 
@@ -696,9 +686,6 @@ namespace gemmini{
                     }
                     instr.SetUpdate(scratchpad, Ite(os_mode, scratchpad_next, scratchpad_next2));
                     instr.SetUpdate(accumulator, Ite(os_mode, accumulator_next, accumulator_next2));
-
-                    auto ws_write_fires_final = !os_mode & ws_write_fires & (WS_count < dest_row);
-                    instr.SetUpdate(WS_count, Ite(ws_write_fires_final, WS_count + BvConst(1, 16), WS_count));
 
                     instr.SetUpdate(cycle, cycle + BvConst(1, 32));
                 }

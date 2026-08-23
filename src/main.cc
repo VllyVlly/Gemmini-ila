@@ -56,7 +56,8 @@ int main() {
     // test_matmul_preload(gem_matmul);
     test_compute_preload_OS(gem_matmul);
     test_compute_preload_WS(gem_matmul);
-    // test_compute_accumulate(gem_matmul);
+    test_compute_accumulate_OS(gem_matmul);
+    test_compute_accumulate_WS(gem_matmul);
 
     
     // Summary
