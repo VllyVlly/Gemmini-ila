@@ -7,14 +7,14 @@ using namespace ilang;
 
 namespace gemmini{
 
-    
+    #define DRAM_ADDR_WIDTH 64
+    #define DRAM_DATA_WIDTH 32
+    #define GEMMINI_ADDR_WIDTH 32
     #define RS_WIDTH 64
+
     #define SYMB_TRUE BoolConst(true)
     #define SYMB_FALSE BoolConst(false)
 
-    #define DRAM_ADDR_WIDTH 64
-    #define DRAM_DATA_WIDTH 32
-    
     // TODO CHANGE LATER
     // For now use 8-bit ints
     #define INPUT_TYPE_BIT_WIDTH 8
@@ -47,11 +47,6 @@ namespace gemmini{
         uint64_t meshColumns;
 
         uint64_t DIM;
-
-        // Dataflow
-        bool dataflow; // 0 for OS, 1 for WS
-        // Note: Might have to remove this since might affect with verification with config
-        // Thus might have to change how to assign C_reg bit widths
 
         // Scratchpad and accumulator memory
         uint64_t sp_banks;
@@ -105,9 +100,6 @@ namespace gemmini{
         accType(accType_)
         {};
 
-        static constexpr size_t input_bits = 8;
-        static constexpr size_t acc_bits = 32;
-        static constexpr size_t output_bits = 16;
     };
 
 
@@ -128,8 +120,7 @@ namespace gemmini{
 
 
     class Gemmini {
-
-            
+ 
         public:
 
             cfg _Cfg;
@@ -207,11 +198,8 @@ namespace gemmini{
             ExprRef rs1;
             ExprRef rs2;
 
-
             Gemmini(cfg Cfg);
             void AddInstructions();
-
-            int DIM;
 
             Ila& get(){
                 return m;
@@ -220,16 +208,18 @@ namespace gemmini{
 
     // Helper Functions
     ExprRef ResizeBv(const ExprRef& e, unsigned target_width);
+    
+    inline uint64_t getBitWidth(DataType dataType){
+        return static_cast<uint64_t>(dataType);
+    }
 
 }
 
 // TODO 
 // Model transposer, and controller modules?
 // Test gap between each DRAM element
-// Use DRAM bit width variables for readability
 // Do README and add better comments
 // Do ReLu
-// Deal with A-stride
 // Deal with rightshift
 // Float multiplication
 // Refresh states once instructions finish

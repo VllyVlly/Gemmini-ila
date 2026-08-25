@@ -33,7 +33,7 @@ void list_states(Gemmini& gem) {
 
 int main() {
     cfg Config1 = cfg();
-    cfg Config2 = cfg(2, 2, 1, 1, false, 4, 64 * 1024, 128 * 1024, DataType::INT8, DataType::INT16, DataType::INT32);
+    cfg Config2 = cfg(2, 2, 1, 1, 4, 64 * 1024, 128 * 1024, DataType::INT8, DataType::INT16, DataType::INT32);
 
     Gemmini gem{Config1};
     Gemmini gem_matmul{Config2}; // 2x2 systolic array for convenience

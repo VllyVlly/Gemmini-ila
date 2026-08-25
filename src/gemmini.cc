@@ -73,13 +73,11 @@ namespace gemmini{
         cycle(m.NewBvState("cycle", 32)), // arbitrary bit size?
         // ---------- Memory states --------------
         DRAM(m.NewMemState("DRAM", DRAM_ADDR_WIDTH, DRAM_DATA_WIDTH)),
-        scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * Cfg.input_bits)),
-        accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * Cfg.acc_bits))
+        scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * getBitWidth(Cfg.inputType))),
+        accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * getBitWidth(Cfg.accType)))
         {
             // ---------- Store config ----------
             _Cfg = Cfg;
-            DIM = Cfg.DIM;
-            
             // ---------- Create Systolic Array ----------
             sys_array.resize(DIM);
             for (size_t i = 0; i < DIM; i++) {
@@ -91,11 +89,10 @@ namespace gemmini{
         };
     
     void Gemmini::AddInstructions(){
-
         const size_t DIM = _Cfg.DIM;
-        const size_t INPUT_BITS = _Cfg.input_bits;
-        const size_t ACC_BITS = _Cfg.acc_bits;
-        const size_t OUTPUT_BITS = _Cfg.output_bits;
+        const size_t INPUT_BITS = getBitWidth(_Cfg.inputType);
+        const size_t ACC_BITS = getBitWidth(_Cfg.accType);
+        const size_t OUTPUT_BITS = getBitWidth(_Cfg.outputType);
         const size_t INPUT_ROW_BITS = DIM * INPUT_BITS;
         const size_t ACC_ROW_BITS = DIM * ACC_BITS;
         
@@ -153,6 +150,7 @@ namespace gemmini{
                     ExprRef new_row_input_concat = BvConst(0, INPUT_ROW_BITS);
                     ExprRef new_row_acc_concat = BvConst(0, ACC_ROW_BITS);
                     
+                    // Build the row
                     for (size_t elem = 0; elem < DIM; elem++) {
                         auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
                         auto should_update = Ite(should_transfer & elem_valid, SYMB_TRUE, SYMB_FALSE);
@@ -194,7 +192,7 @@ namespace gemmini{
                     instr.SetUpdate(start_chunk, Ite(!done, new_chunk, start_chunk));
                     instr.SetUpdate(start_row, Ite(!done, new_row, start_row));
                     
-                    // Set done flag when all done
+                    // Set done when all chunks and rows are done
                     auto all_rows_done = Uge(new_row, mvin_row_num);
                     auto done_after = Ite(chunk_overflow & all_rows_done, SYMB_TRUE, SYMB_FALSE);
                     instr.SetUpdate(done, Ite(done_after, BoolConst(true), done));
@@ -246,8 +244,7 @@ namespace gemmini{
                     // Get the row to be transferred
                     auto current_row_input = scratchpad.Load(sour_base);
                     auto current_row_acc = accumulator.Load(sour_base);
-                    
-                    
+                     
                     ExprRef dram_next = DRAM;
 
                     for (size_t elem = 0; elem < DIM; elem++) {
@@ -259,10 +256,9 @@ namespace gemmini{
                         auto update = Ite(BvConst(elem, 16) < mvout_col_num, SYMB_TRUE, SYMB_FALSE);
 
                         auto select_source = Ite(mvout_source == BvConst(0, 1),
-                                                ZExt(elem_input, DRAM_DATA_WIDTH), 
-                                                elem_acc); // Maybe also ZExt?
+                                                ResizeBv(elem_input, DRAM_DATA_WIDTH), 
+                                                ResizeBv(elem_acc, DRAM_DATA_WIDTH));
 
-                        // Chain off dram_next (the running result), not the raw DRAM state
                         dram_next = Ite(update & continue_row,
                                         Store(dram_next, dram_elem_addr, select_source),
                                         dram_next);
@@ -278,6 +274,7 @@ namespace gemmini{
                 }
 
                 // mvout end
+                // TODO reset states when done
                 {
                     InstrRef instr = m.NewInstr("mvout_end");
                     auto decode = mvout;
@@ -357,7 +354,7 @@ namespace gemmini{
                         auto row_acc = accumulator.Load(source_addr + row_index);
                         auto elem_sp = Extract(row_sp, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
                         auto elem_acc = Extract(row_acc, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
-                        auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), ZExt(elem_sp, ACC_BITS), elem_acc);
+                        auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), ResizeBv(elem_sp, ACC_BITS), elem_acc);
                         auto should_transfer = Ite((BvConst(i, 16) < source_row) & (BvConst(j, 16) < source_col), SYMB_TRUE, SYMB_FALSE);
                         instr.SetUpdate(sys_row[j]->stationary_reg, Ite(should_transfer, preload_elem, sys_row[j]->stationary_reg));
                     }
@@ -365,7 +362,7 @@ namespace gemmini{
                 
             }
 
-            {
+            { 
 
                 {
                     // matmul.compute.preloaded
@@ -412,7 +409,7 @@ namespace gemmini{
                             if (col == 0) {
                                 auto k_a = cycle - BvConst(row, 32);
                                 A_in = Ite(cycle >= BvConst(row, 32) & k_a < ZExt(A_col, 32) & !write_cycle,
-                                        Extract(Lshr(scratchpad.Load(A_addr + BvConst(row, 32)),
+                                        Extract(Lshr(scratchpad.Load(A_addr + (BvConst(row, GEMMINI_ADDR_WIDTH)*ResizeBv(A_stride, GEMMINI_ADDR_WIDTH))),
                                                 ResizeBv(k_a * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
@@ -576,7 +573,7 @@ namespace gemmini{
                             if (col == 0) {
                                 auto k_a = cycle - BvConst(row, 32);
                                 A_in = Ite(cycle >= BvConst(row, 32) & k_a < ZExt(A_col, 32) & !write_cycle,
-                                        Extract(Lshr(scratchpad.Load(A_addr + BvConst(row, 32)),
+                                        Extract(Lshr(scratchpad.Load(A_addr + (BvConst(row, GEMMINI_ADDR_WIDTH)*ResizeBv(A_stride, GEMMINI_ADDR_WIDTH))),
                                                 ResizeBv(k_a * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
@@ -695,7 +692,6 @@ namespace gemmini{
             }
         }
 
-        // Note: Loop instructions not included in README, therefore not implemented for now
     }
 
     
