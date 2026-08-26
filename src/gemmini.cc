@@ -78,6 +78,7 @@ namespace gemmini{
         {
             // ---------- Store config ----------
             _Cfg = Cfg;
+            auto DIM = Cfg.DIM;
             // ---------- Create Systolic Array ----------
             sys_array.resize(DIM);
             for (size_t i = 0; i < DIM; i++) {
@@ -397,6 +398,12 @@ namespace gemmini{
                     ExprRef scratchpad_next2 = scratchpad;
                     ExprRef accumulator_next2 = accumulator;
 
+                    auto A_transpose = (A_T == BvConst(1,1));
+                    auto B_transpose = (B_T == BvConst(1,1));
+                    // Transpose WIP
+                    // Scale WIP
+                    // Right shift WIP
+
                     for (size_t row = 0; row < DIM; row++) {
                         auto is_last_row = Ite(BvConst(row+1,16) == dest_row, SYMB_TRUE, SYMB_FALSE);
 
@@ -408,22 +415,36 @@ namespace gemmini{
 
                             if (col == 0) {
                                 auto k_a = cycle - BvConst(row, 32);
-                                A_in = Ite(cycle >= BvConst(row, 32) & k_a < ZExt(A_col, 32) & !write_cycle,
+                                auto A_1 = Ite(cycle >= BvConst(row, 32) & k_a < ZExt(A_col, 32) & !write_cycle,
                                         Extract(Lshr(scratchpad.Load(A_addr + (BvConst(row, GEMMINI_ADDR_WIDTH)*ResizeBv(A_stride, GEMMINI_ADDR_WIDTH))),
                                                 ResizeBv(k_a * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
+                                auto k_row = cycle - BvConst(col, 32);
+                                auto A_2 = Ite(cycle >= BvConst(col, 32) & k_row < ZExt(A_row, 32) & !write_cycle,
+                                            Extract(scratchpad.Load(A_addr + k_row),
+                                                    (col + 1) * INPUT_BITS - 1,
+                                                    col * INPUT_BITS),
+                                            BvConst(0, INPUT_BITS));
+                                A_in = Ite(A_transpose, A_2, A_1);
                             } else {
                                 A_in = sys_array[row][col-1]->A_reg;
                             }
 
                             if (row == 0) {
                                 auto k_b = cycle - BvConst(col, 32);
-                                B_D_in = Ite(cycle >= BvConst(col, 32) & k_b < ZExt(B_D_row, 32) & !write_cycle,
+                                auto B_1 = Ite(cycle >= BvConst(col, 32) & k_b < ZExt(B_D_row, 32) & !write_cycle,
                                             Extract(scratchpad.Load(B_D_addr + k_b),
                                                     (col + 1) * INPUT_BITS - 1,
                                                     col * INPUT_BITS),
                                             BvConst(0, INPUT_BITS));
+                                auto k_col = cycle - BvConst(row, 32);
+                                auto B_2 = Ite(cycle >= BvConst(row, 32) & k_col < ZExt(B_D_col, 32) & !write_cycle,
+                                        Extract(Lshr(scratchpad.Load(B_D_addr + (BvConst(row, GEMMINI_ADDR_WIDTH))),
+                                                ResizeBv(k_col * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
+                                                INPUT_BITS - 1, 0),
+                                        BvConst(0, INPUT_BITS));
+                                B_D_in = Ite(B_transpose, B_2, B_1);
                             } else {
                                 B_D_in = sys_array[row-1][col]->B_D_reg;
                             }

@@ -39,6 +39,7 @@ namespace gemmini{
         // Add more as needed
     };
 
+    // Configure Gemmini Paramaters
     struct cfg {
         // Systolic array dimensions 
         uint64_t tileRows;
@@ -64,7 +65,6 @@ namespace gemmini{
         meshRows(1),
         meshColumns(1),
         DIM(tileRows*meshRows),
-        dataflow(true),  // WS mode by default
         sp_banks(4),
         sp_capacity(64 * 1024),   // 64 KB
         acc_capacity(128 * 1024), // 128 KB
@@ -78,7 +78,6 @@ namespace gemmini{
             uint64_t tileColumns_,
             uint64_t meshRows_,
             uint64_t meshColumns_,
-            bool dataflow_,
             uint64_t sp_banks_,
             uint64_t sp_capacity_,
             uint64_t acc_capacity_,
@@ -91,7 +90,6 @@ namespace gemmini{
         meshRows(meshRows_),
         meshColumns(meshColumns_),
         DIM(tileRows*meshRows),
-        dataflow(dataflow_),
         sp_banks(sp_banks_),
         sp_capacity(sp_capacity_),
         acc_capacity(acc_capacity_),

@@ -115,6 +115,10 @@ void test_compute_preload_OS(Gemmini& gem){
         auto elem2 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 15, 8), 7, u, mdl));
         auto elem3 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 7, 0), 7, u, mdl));
         auto elem4 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 15, 8), 7, u, mdl));
+        std::cout << elem1 << '\n';
+        std::cout << elem2 << '\n';
+        std::cout << elem3 << '\n';
+        std::cout << elem4 << '\n';
         EXPECT_TRUE(elem1 == "3");
         EXPECT_TRUE(elem2 == "0");
         EXPECT_TRUE(elem3 == "3");
@@ -248,6 +252,10 @@ void test_compute_accumulate_OS(Gemmini& gem){
         auto elem2 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 15, 8), 12, u, mdl));
         auto elem3 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 7, 0), 12, u, mdl));
         auto elem4 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 15, 8), 12, u, mdl));
+        std::cout << elem1 << '\n';
+        std::cout << elem2 << '\n';
+        std::cout << elem3 << '\n';
+        std::cout << elem4 << '\n';
         EXPECT_TRUE(elem1 == "6");
         EXPECT_TRUE(elem2 == "0");
         EXPECT_TRUE(elem3 == "6");
