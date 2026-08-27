@@ -403,6 +403,7 @@ namespace gemmini{
                     // Transpose WIP
                     // Scale WIP
                     // Right shift WIP
+                    // ReLu WIP
 
                     for (size_t row = 0; row < DIM; row++) {
                         auto is_last_row = Ite(BvConst(row+1,16) == dest_row, SYMB_TRUE, SYMB_FALSE);

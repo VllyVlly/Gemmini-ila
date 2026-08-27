@@ -214,11 +214,7 @@ namespace gemmini{
 }
 
 // TODO 
-// Model transposer, and controller modules?
 // Test gap between each DRAM element
 // Do README and add better comments
-// Do ReLu
-// Deal with rightshift
 // Float multiplication
 // Refresh states once instructions finish
-// Do more integrated tests, several instructions
