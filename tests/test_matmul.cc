@@ -156,13 +156,13 @@ void test_compute_preload_WS(Gemmini& gem){
 
         // Load matrix A and D
         // Matrix A
-        // 1 2
-        // 2 1
+        // 1 0
+        // 2 0
         // Matrix D
         // 0 0
         // 0 0
-        cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00002000), 0x0201, 16, 2); // row0: 1 2
-        cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00002001), 0x0102, 16, 2); // row1: 2 1
+        cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00002000), 0x0001, 16, 2); // row0: 1 0
+        cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00002001), 0x0002, 16, 2); // row1: 2 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0000, 16, 2); // row0: 0 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2); // row1: 0 0
 
@@ -174,15 +174,15 @@ void test_compute_preload_WS(Gemmini& gem){
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
-        // 3 0
-        // 3 0
+        // 1 0
+        // 2 0
         auto elem1 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 7, 0), 7, u, mdl));
         auto elem2 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 15, 8), 7, u, mdl));
         auto elem3 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 7, 0), 7, u, mdl));
         auto elem4 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 15, 8), 7, u, mdl));
-        EXPECT_TRUE(elem1 == "3");
+        EXPECT_TRUE(elem1 == "1");
         EXPECT_TRUE(elem2 == "0");
-        EXPECT_TRUE(elem3 == "3");
+        EXPECT_TRUE(elem3 == "2");
         EXPECT_TRUE(elem4 == "0");
     });
 }
@@ -422,16 +422,16 @@ void test_compute_preload_WS_A_transpose(Gemmini& gem){
 
     [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
-        // 1 2
-        // 3 0
+        // 1 3
+        // 2 0
     
         auto elem1 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 7, 0), 7, u, mdl));
         auto elem2 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001000), 15, 8), 7, u, mdl));
         auto elem3 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 7, 0), 7, u, mdl));
         auto elem4 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 15, 8), 7, u, mdl));
         EXPECT_TRUE(elem1 == "1");
-        EXPECT_TRUE(elem2 == "2");
-        EXPECT_TRUE(elem3 == "3");
+        EXPECT_TRUE(elem2 == "3");
+        EXPECT_TRUE(elem3 == "2");
         EXPECT_TRUE(elem4 == "0");
     });
 }
@@ -564,8 +564,8 @@ void test_compute_preload_WS_AB_transpose(Gemmini& gem){
         auto elem4 = HexToDecimalString(TO_STR(Extract(gem.scratchpad.Load(0x00001001), 15, 8), 7, u, mdl));
         EXPECT_TRUE(elem1 == "1");
         EXPECT_TRUE(elem2 == "2");
-        EXPECT_TRUE(elem3 == "3");
-        EXPECT_TRUE(elem4 == "6");
+        EXPECT_TRUE(elem3 == "2");
+        EXPECT_TRUE(elem4 == "4");
     });
 }
 

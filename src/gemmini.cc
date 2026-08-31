@@ -452,16 +452,20 @@ namespace gemmini{
                                                 ResizeBv(k_a * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
-                                // FIX: keep row-based skew (skew is a property of the physical
-                                // row wire, not of transpose); walk through A's rows over time
-                                // using row-pitch address stepping; extract at column position `row`.
                                 auto k_row = cycle - BvConst(row, 32);
                                 auto A_2 = Ite(cycle >= BvConst(row, 32) & k_row < ZExt(A_row, 32) & !write_cycle,
                                             Extract(scratchpad.Load(A_addr + ResizeBv(k_row, GEMMINI_ADDR_WIDTH) * ResizeBv(A_stride, GEMMINI_ADDR_WIDTH)),
                                                     (row + 1) * INPUT_BITS - 1,
                                                     row * INPUT_BITS),
                                             BvConst(0, INPUT_BITS));
-                                A_in = Ite(A_transpose, A_2, A_1);
+
+                                // FIX: "row" = output row (m) in OS, but = contraction index (k) in WS.
+                                // A_1/A_2 therefore swap which one is "natural" vs "transposed" depending
+                                // on mode. Keep OS's existing (already-correct) mapping; flip it for WS
+                                // so A_T means the same thing (0=natural, 1=transposed) in both modes.
+                                auto A_in_os = Ite(A_transpose, A_2, A_1);
+                                auto A_in_ws = Ite(A_transpose, A_1, A_2);
+                                A_in = Ite(os_mode, A_in_os, A_in_ws);
                             } else {
                                 A_in = sys_array[row][col-1]->A_reg;
                             }
