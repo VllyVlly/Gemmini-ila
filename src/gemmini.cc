@@ -346,17 +346,42 @@ namespace gemmini{
                 instr.SetUpdate(dest_addr, Extract(rs2, 31, 0));
                 instr.SetUpdate(dest_col, Extract(rs2, 47, 32));
                 instr.SetUpdate(dest_row, Extract(rs2, 63, 48));
-                
+
+                // FIX: this instruction loads D in OS mode (never transposed) and B in
+                // WS mode (transposed iff B_T is set). Gate transpose on WS mode so an
+                // OS-mode preload of D can never be accidentally transposed.
+                auto os_mode = (dataflow == BoolConst(false));
+                auto B_transpose = (B_T == BvConst(1,1));
+                auto apply_transpose = !os_mode & B_transpose;
+
                 for (size_t i = 0; i < DIM; i++) {
                     auto& sys_row =  sys_array[i];
                     for (size_t j = 0; j < DIM; j++) {
-                        auto row_index = BvConst(i,32);
-                        auto row_sp = scratchpad.Load(source_addr + row_index);
-                        auto row_acc = accumulator.Load(source_addr + row_index);
-                        auto elem_sp = Extract(row_sp, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
-                        auto elem_acc = Extract(row_acc, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
+                        // Non-transposed read: physical row i, column j (original behavior)
+                        auto row_index_nt = BvConst(i,32);
+                        auto row_sp_nt = scratchpad.Load(source_addr + row_index_nt);
+                        auto row_acc_nt = accumulator.Load(source_addr + row_index_nt);
+                        auto elem_sp_nt = Extract(row_sp_nt, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
+                        auto elem_acc_nt = Extract(row_acc_nt, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
+
+                        // Transposed read: physical row j, column i, i.e. stationary[i][j] = physical(j,i)
+                        auto row_index_t = BvConst(j,32);
+                        auto row_sp_t = scratchpad.Load(source_addr + row_index_t);
+                        auto row_acc_t = accumulator.Load(source_addr + row_index_t);
+                        auto elem_sp_t = Extract(row_sp_t, (i + 1) * INPUT_BITS - 1, i * INPUT_BITS);
+                        auto elem_acc_t = Extract(row_acc_t, (i + 1) * ACC_BITS - 1, i * ACC_BITS);
+
+                        auto elem_sp = Ite(apply_transpose, elem_sp_t, elem_sp_nt);
+                        auto elem_acc = Ite(apply_transpose, elem_acc_t, elem_acc_nt);
+
                         auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0,1), ResizeBv(elem_sp, ACC_BITS), elem_acc);
-                        auto should_transfer = Ite((BvConst(i, 16) < source_row) & (BvConst(j, 16) < source_col), SYMB_TRUE, SYMB_FALSE);
+
+                        // FIX: bounds must swap under transpose too (mirrors in_bounds fix
+                        // in compute.preloaded_step) — the "row-count" and "col-count" of
+                        // the *used* (post-transpose) matrix are swapped from the stored one.
+                        auto row_bound = Ite(apply_transpose, source_col, source_row);
+                        auto col_bound = Ite(apply_transpose, source_row, source_col);
+                        auto should_transfer = Ite((BvConst(i, 16) < row_bound) & (BvConst(j, 16) < col_bound), SYMB_TRUE, SYMB_FALSE);
                         instr.SetUpdate(sys_row[j]->stationary_reg, Ite(should_transfer, preload_elem, sys_row[j]->stationary_reg));
                     }
                 }
@@ -387,6 +412,7 @@ namespace gemmini{
                 }
 
                 {
+                    
                     // matmul.compute.preloaded step
                     InstrRef instr = m.NewInstr("matmul.compute.preloaded_step");
                     auto decode = matmul_compute_preloaded;
@@ -400,16 +426,21 @@ namespace gemmini{
 
                     auto A_transpose = (A_T == BvConst(1,1));
                     auto B_transpose = (B_T == BvConst(1,1));
-                    // Transpose WIP
                     // Scale WIP
                     // Right shift WIP
                     // ReLu WIP
+
+                    // FIX: in_bounds must account for the active region of the *fed* operand,
+                    // which changes shape under transpose. A_transpose feeds A_col "rows";
+                    // B_transpose feeds B_D_row "columns".
+                    auto A_active_rows = Ite(A_transpose, ZExt(A_col, 16), A_row);
+                    auto B_active_cols = Ite(B_transpose, ZExt(B_D_row, 16), B_D_col);
 
                     for (size_t row = 0; row < DIM; row++) {
                         auto is_last_row = Ite(BvConst(row+1,16) == dest_row, SYMB_TRUE, SYMB_FALSE);
 
                         for (size_t col = 0; col < DIM; col++) {
-                            auto in_bounds = (BvConst(row, 16) < A_row) & (BvConst(col, 16) < B_D_col);
+                            auto in_bounds = (BvConst(row, 16) < A_active_rows) & (BvConst(col, 16) < B_active_cols);
 
                             ExprRef A_in = BvConst(0, INPUT_BITS);
                             ExprRef B_D_in = BvConst(0, INPUT_BITS);
@@ -421,11 +452,14 @@ namespace gemmini{
                                                 ResizeBv(k_a * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
-                                auto k_row = cycle - BvConst(col, 32);
-                                auto A_2 = Ite(cycle >= BvConst(col, 32) & k_row < ZExt(A_row, 32) & !write_cycle,
-                                            Extract(scratchpad.Load(A_addr + k_row),
-                                                    (col + 1) * INPUT_BITS - 1,
-                                                    col * INPUT_BITS),
+                                // FIX: keep row-based skew (skew is a property of the physical
+                                // row wire, not of transpose); walk through A's rows over time
+                                // using row-pitch address stepping; extract at column position `row`.
+                                auto k_row = cycle - BvConst(row, 32);
+                                auto A_2 = Ite(cycle >= BvConst(row, 32) & k_row < ZExt(A_row, 32) & !write_cycle,
+                                            Extract(scratchpad.Load(A_addr + ResizeBv(k_row, GEMMINI_ADDR_WIDTH) * ResizeBv(A_stride, GEMMINI_ADDR_WIDTH)),
+                                                    (row + 1) * INPUT_BITS - 1,
+                                                    row * INPUT_BITS),
                                             BvConst(0, INPUT_BITS));
                                 A_in = Ite(A_transpose, A_2, A_1);
                             } else {
@@ -439,9 +473,11 @@ namespace gemmini{
                                                     (col + 1) * INPUT_BITS - 1,
                                                     col * INPUT_BITS),
                                             BvConst(0, INPUT_BITS));
-                                auto k_col = cycle - BvConst(row, 32);
-                                auto B_2 = Ite(cycle >= BvConst(row, 32) & k_col < ZExt(B_D_col, 32) & !write_cycle,
-                                        Extract(Lshr(scratchpad.Load(B_D_addr + (BvConst(row, GEMMINI_ADDR_WIDTH))),
+                                // FIX: keep col-based skew and col-pitched address (mirror of A_2's fix);
+                                // was incorrectly keyed off `row` (which is 0 in this scope).
+                                auto k_col = cycle - BvConst(col, 32);
+                                auto B_2 = Ite(cycle >= BvConst(col, 32) & k_col < ZExt(B_D_col, 32) & !write_cycle,
+                                        Extract(Lshr(scratchpad.Load(B_D_addr + BvConst(col, GEMMINI_ADDR_WIDTH)),
                                                 ResizeBv(k_col * BvConst(INPUT_BITS, 32), INPUT_ROW_BITS)),
                                                 INPUT_BITS - 1, 0),
                                         BvConst(0, INPUT_BITS));
@@ -461,6 +497,9 @@ namespace gemmini{
                                             Ite(os_mode & in_bounds & !write_cycle, stat_updated, sys_array[row][col]->stationary_reg));
                             auto c_os = Extract(stat_updated, OUTPUT_BITS - 1, 0);
 
+                            // D (psum) path: intentionally independent of A_transpose/B_transpose.
+                            // config_ex has no D-transpose option, so this must never route
+                            // through the A_2/B_2 transpose muxes above.
                             ExprRef psum_in = BvConst(0, ACC_BITS);
                             if (row == 0) {
                                 auto k_p = cycle - BvConst(col, 32);
@@ -542,6 +581,7 @@ namespace gemmini{
                     instr.SetUpdate(accumulator, Ite(os_mode, accumulator_next, accumulator_next2));
 
                     instr.SetUpdate(cycle, cycle + BvConst(1, 32));
+                
                 }
                 
             }
