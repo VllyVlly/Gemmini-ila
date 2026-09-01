@@ -90,6 +90,11 @@ This repo does not vendor or track ILAng directly — you'll need to clone it se
 <!-- ROADMAP -->
 ## Roadmap
 
+- [x] Data movement instructions — `mvin`, `mvout`
+- [x] Config instructions — `config_ex`, `config_mvin`, `config_mvout`
+- [x] Core matmul sequence instructions — `matmul.preload`, `matmul.compute.preloaded`, `matmul.compute.accumulated`
+- [ ] Model additional Gemmini instructions (e.g. loop instructions, flush)
+- [ ] End-to-end equivalence checking against RTL
 
 
 <!-- CONTRIBUTING -->
