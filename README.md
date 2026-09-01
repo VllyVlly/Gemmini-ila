@@ -41,49 +41,54 @@ ILAng requires CMake (3.9.6 or above) and a compiler with C++17 support. To inst
   apt-get install bison flex z3 libz3-dev
   ```
 
-### Installation
+### Installation (WIP)
 
-1. Clone the repo
+This repo does not vendor or track ILAng directly — you'll need to clone it separately alongside this repo before building.
+
+1. Clone this repo
    ```sh
-   git clone https://github.com/github_username/gemmini-ila.git
+   git clone https://github.com/VllyVlly/Gemmini-ila
    cd gemmini-ila
    ```
-2. Build with CMake
+2. Clone ILAng at the root of this repo
+   ```sh
+   git clone https://github.com/Bo-Yuan-Huang/ILAng
+   ```
+   Your directory structure should now look like:
+   ```
+   gemmini-ila/
+   ├── ILAng/
+   ├── src/
+   ├── CMakeLists.txt
+   └── ...
+   ```
+3. Build ILAng
+   ```sh
+   cd ILAng
+   mkdir build && cd build
+   cmake ..
+   make -j$(nproc)
+   sudo make install
+   cd ../..
+   ```
+4. Build the Gemmini ILA model
    ```sh
    mkdir build && cd build
    cmake ..
    make -j$(nproc)
    ```
-3. Run the test suite
+5. Run the test suite
    ```sh
    ./test_gemmini_ila
    ```
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 
 <!-- USAGE EXAMPLES -->
 ## Usage
 
-The model can be exercised through its test suite, which covers OS and WS modes with A-only, B-only, and AB-transpose cases at small array dimensions (e.g. DIM=2). Each test constructs an instruction sequence, steps the ILA, and checks final scratchpad/accumulator state against expected values.
-
-```sh
-./build/test_gemmini_ila --gtest_filter=*Transpose*
-```
-
-_For details on the ILA specification format, see the [ILAng documentation](https://github.com/Bo-Yuan-Huang/ILAng)._
-
 
 <!-- ROADMAP -->
 ## Roadmap
-
-- [x] `matmul.preload` — WS-mode transpose handling for stationary weights
-- [x] `matmul.compute.preloaded_step` — OS/WS cycle-by-cycle stepping with A/B transpose
-- [x] Test suite: OS/WS × A-only/B-only/AB-transpose at DIM=2
-- [ ] Extend test coverage to larger array dimensions
-- [ ] Model additional Gemmini instructions (e.g. `mvin`, `mvout`, `config_st`)
-- [ ] End-to-end equivalence checking against RTL
 
 
 
@@ -100,7 +105,7 @@ Contributions are welcome. If you have a suggestion, please fork the repo and op
 
 
 <!-- LICENSE -->
-## License
+## License (WIP)
 
 Distributed under the project_license. See `LICENSE.txt` for more information.
 
@@ -108,9 +113,9 @@ Distributed under the project_license. See `LICENSE.txt` for more information.
 <!-- CONTACT -->
 ## Contact
 
-Your Name - [@twitter_handle](https://twitter.com/twitter_handle) - email@email_client.com
+VllyVlly - virellelly578@gmail.com
 
-Project Link: [https://github.com/github_username/gemmini-ila](https://github.com/github_username/gemmini-ila)
+Project Link: https://github.com/VllyVlly/Gemmini-ila
 
 
 <!-- ACKNOWLEDGMENTS -->
