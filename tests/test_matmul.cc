@@ -181,11 +181,6 @@ void test_compute_preload_WS(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
-// ============================================================
-// OS mode — A transpose only
-// A_stored (physical) = [[1,2],[3,0]]  -->  A_used = transpose = [[1,3],[2,0]]
-// B (identity, no transpose)           -->  C = A_used * I = [[1,3],[2,0]]
-// ============================================================
 void test_compute_preload_OS_A_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation OS 2x2 with A transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
@@ -241,12 +236,6 @@ void test_compute_preload_OS_A_transpose(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
-// ============================================================
-// OS mode — B transpose only
-// A (identity, no transpose)
-// B_stored (physical) = [[1,0],[2,0]]  -->  B_used = transpose = [[1,2],[0,0]]
-// C = I * B_used = [[1,2],[0,0]]
-// ============================================================
 void test_compute_preload_OS_B_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation OS 2x2 with B transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
@@ -302,12 +291,6 @@ void test_compute_preload_OS_B_transpose(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
-// ============================================================
-// OS mode — both A and B transposed
-// A_stored = [[1,2],[3,0]]  -->  A_used = [[1,3],[2,0]]
-// B_stored = [[1,0],[2,0]]  -->  B_used = [[1,2],[0,0]]
-// C = A_used * B_used = [[1,2],[2,4]]
-// ============================================================
 void test_compute_preload_OS_AB_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation OS 2x2 with A and B transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
@@ -363,13 +346,6 @@ void test_compute_preload_OS_AB_transpose(Gemmini& gem)
         EXPECT_TRUE(elem4 == "4"); });
 }
 
-// ============================================================
-// WS mode — A transpose only
-// B (identity, preloaded as stationary weight, no transpose)
-// A_stored = [[1,2],[3,0]]  -->  A_used = [[1,3],[2,0]]
-// D = 0 0 / 0 0
-// C = A_used * I + D = [[1,3],[2,0]]
-// ============================================================
 void test_compute_preload_WS_A_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation WS 2x2 with A transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
@@ -426,18 +402,6 @@ void test_compute_preload_WS_A_transpose(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
-// ============================================================
-// WS mode — B transpose only
-// NOTE: weight for WS comes from stationary_reg, loaded by matmul.preload,
-// not by the B_D_in path fixed in compute.preloaded_step. This test exercises
-// matmul.preload's handling of B_T, not the fix made here — if it fails,
-// look at matmul.preload's transpose logic first.
-//
-// B_stored = [[1,0],[2,0]] --> B_used (weight) = transpose = [[1,2],[0,0]]
-// A (identity, no transpose)
-// D = 0 0 / 0 0
-// C = I * B_used + D = [[1,2],[0,0]]
-// ============================================================
 void test_compute_preload_WS_B_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation WS 2x2 with B transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
@@ -493,14 +457,6 @@ void test_compute_preload_WS_B_transpose(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
-// ============================================================
-// WS mode — both A and B transposed
-// (see caveat on WS_B_transpose above re: matmul.preload)
-// B_stored = [[1,0],[2,0]] --> B_used = [[1,2],[0,0]]
-// A_stored = [[1,2],[3,0]] --> A_used = [[1,3],[2,0]]
-// D = 0 0 / 0 0
-// C = A_used * B_used + D = [[1,2],[2,4]]
-// ============================================================
 void test_compute_preload_WS_AB_transpose(Gemmini& gem)
 {
     CHECK("Preload calculation WS 2x2 with A and B transpose", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step" },
