@@ -1,12 +1,6 @@
 <a id="readme-top"></a>
 
 <!-- PROJECT SHIELDS -->
-[![Contributors][contributors-shield]][contributors-url]
-[![Forks][forks-shield]][forks-url]
-[![Stargazers][stars-shield]][stars-url]
-[![Issues][issues-shield]][issues-url]
-[![project_license][license-shield]][license-url]
-
 
 
 <!-- PROJECT LOGO -->
@@ -16,65 +10,16 @@
 
   <p align="center">
     A formal Instruction-Level Abstraction (ILA) model of the Gemmini systolic array accelerator, built with ILAng.
-    <br />
-    <a href="https://github.com/github_username/gemmini-ila"><strong>Explore the docs »</strong></a>
-    <br />
-    <br />
-    <a href="https://github.com/github_username/gemmini-ila/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
-    &middot;
-    <a href="https://github.com/github_username/gemmini-ila/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
   </p>
 </div>
 
 
-
-<!-- TABLE OF CONTENTS -->
-<details>
-  <summary>Table of Contents</summary>
-  <ol>
-    <li>
-      <a href="#about-the-project">About The Project</a>
-      <ul>
-        <li><a href="#built-with">Built With</a></li>
-      </ul>
-    </li>
-    <li>
-      <a href="#getting-started">Getting Started</a>
-      <ul>
-        <li><a href="#prerequisites">Prerequisites</a></li>
-        <li><a href="#installation">Installation</a></li>
-      </ul>
-    </li>
-    <li><a href="#usage">Usage</a></li>
-    <li><a href="#modeling-notes">Modeling Notes</a></li>
-    <li><a href="#roadmap">Roadmap</a></li>
-    <li><a href="#contributing">Contributing</a></li>
-    <li><a href="#license">License</a></li>
-    <li><a href="#contact">Contact</a></li>
-    <li><a href="#acknowledgments">Acknowledgments</a></li>
-  </ol>
-</details>
-
-
-
 <!-- ABOUT THE PROJECT -->
-## About The Project
+## About
 
 This repository contains a formal ILA (Instruction-Level Abstraction) model of the [Gemmini](https://github.com/ucb-bar/gemmini) systolic array accelerator, built using [ILAng](https://github.com/Bo-Yuan-Huang/ILAng).
 
-The model specifies Gemmini's instruction semantics at the abstraction level needed for formal verification — precise enough to capture cycle-level systolic array behavior, but abstracted away from RTL implementation detail. The current focus is on **matrix multiplication instructions with transpose support**, specifically how `config_ex` parameters (`A_transpose`, `B_transpose`) propagate into compute behavior across Gemmini's two dataflow modes:
-
-- **Output-Stationary (OS) mode** — B is streamed in via `B_D_in`, so `B_T` affects the streamed input directly.
-- **Weight-Stationary (WS) mode** — B comes from `stationary_reg`, loaded by `matmul.preload`, so `B_T` must be applied at load time.
-
-D (the accumulator seed) is never transposed — `config_ex` has no transpose option for it, and its path through `psum_in` is architecturally decoupled from the transpose muxes.
-
-Instructions currently modeled and under active verification:
-- `matmul.compute.preloaded_step` — cycle-by-cycle systolic array stepping
-- `matmul.preload` — loads stationary weights or accumulator seeds into PE registers
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
+The model specifies Gemmini's instruction semantics at the abstraction level needed for formal verification, precise enough to capture cycle-level systolic array behavior, but abstracted away from RTL implementation detail. 
 
 
 ### Built With
@@ -83,9 +28,6 @@ Instructions currently modeled and under active verification:
 * C++17
 * CMake
 * [Z3](https://github.com/Z3Prover/z3) — SMT solver backend
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 
 <!-- GETTING STARTED -->
@@ -132,23 +74,6 @@ The model can be exercised through its test suite, which covers OS and WS modes 
 
 _For details on the ILA specification format, see the [ILAng documentation](https://github.com/Bo-Yuan-Huang/ILAng)._
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
-
-<!-- MODELING NOTES -->
-## Modeling Notes
-
-A few non-obvious conventions worth documenting for contributors:
-
-- **A/B transpose asymmetry**: A's default scratchpad read is already logically transposed (physical row indexes the contraction dimension `k`), so `A_T=1` actually means "read as natural row-major" — the opposite of the naive expectation. B has no such pre-transposition, so `B_T=1` applies a genuine transpose.
-- **`B_T` is gated on WS mode** (`!os_mode`) in `matmul.preload`, since B follows a different path in OS mode.
-- **Index variable scope**: `row` and `col` are not both nonzero in the same instruction phase — always check which is zero in a given scope before using it as an index.
-- Transpose selection is implemented with `Ite` expressions to keep spec edits non-destructive and auditable.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
 
 <!-- ROADMAP -->
 ## Roadmap
@@ -159,10 +84,6 @@ A few non-obvious conventions worth documenting for contributors:
 - [ ] Extend test coverage to larger array dimensions
 - [ ] Model additional Gemmini instructions (e.g. `mvin`, `mvout`, `config_st`)
 - [ ] End-to-end equivalence checking against RTL
-
-See the [open issues](https://github.com/github_username/gemmini-ila/issues) for a full list of proposed features and known issues.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 
@@ -177,23 +98,11 @@ Contributions are welcome. If you have a suggestion, please fork the repo and op
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-### Top contributors:
-
-<a href="https://github.com/github_username/gemmini-ila/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=github_username/gemmini-ila" alt="contrib.rocks image" />
-</a>
-
-
 
 <!-- LICENSE -->
 ## License
 
 Distributed under the project_license. See `LICENSE.txt` for more information.
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 
 
 <!-- CONTACT -->
@@ -203,17 +112,12 @@ Your Name - [@twitter_handle](https://twitter.com/twitter_handle) - email@email_
 
 Project Link: [https://github.com/github_username/gemmini-ila](https://github.com/github_username/gemmini-ila)
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
 
 <!-- ACKNOWLEDGMENTS -->
 ## Acknowledgments
 
 * [Gemmini](https://github.com/ucb-bar/gemmini)
 * [ILAng](https://github.com/Bo-Yuan-Huang/ILAng)
-
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
 
