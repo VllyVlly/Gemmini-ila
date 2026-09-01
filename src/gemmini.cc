@@ -4,18 +4,6 @@
 #include <ilang/ilang++.h>
 
 namespace gemmini{
-
-    ExprRef ResizeBv(const ExprRef& e, unsigned target_width) {
-        unsigned cur_width = e.bit_width(); 
-        if (cur_width == target_width) {
-            return e;                      
-        } else if (cur_width < target_width) {
-            return ZExt(e, target_width);  // widening
-        } else {
-            return Extract(e, target_width - 1, 0); // narrowing (truncate high bits)
-        }
-    }
-
     Gemmini::Gemmini(cfg Cfg) 
         :m(Ila("Gemmini")),
         // ---------- Inputs ----------
@@ -424,8 +412,9 @@ namespace gemmini{
                     ExprRef scratchpad_next2 = scratchpad;
                     ExprRef accumulator_next2 = accumulator;
 
-                    auto A_transpose = (A_T == BvConst(1,1));
-                    auto B_transpose = (B_T == BvConst(1,1));
+                    auto A_transpose = A_T == BvConst(1,1);
+                    auto B_transpose = B_T == BvConst(1,1);
+                    auto ReLU = activation_func == BvConst(1,1);
                     // Scale WIP
                     // Right shift WIP
                     // ReLu WIP
@@ -537,8 +526,9 @@ namespace gemmini{
                             for (size_t c = 0; c < DIM; c++) {
                                 auto existingElemSp = Extract(existingRowSp, (c+1)*INPUT_BITS-1, c*INPUT_BITS);
                                 auto existingElemAcc = Extract(existingRowAcc, (c+1)*ACC_BITS-1, c*ACC_BITS);
-                                auto elemSp = (c == col) ? ResizeBv(c_ws, INPUT_BITS) : existingElemSp;
-                                auto elemAcc = (c == col) ? ResizeBv(c_ws, ACC_BITS) : existingElemAcc;
+                                auto final_output2 = Ite(ReLU, Relu(c_ws), c_ws);
+                                auto elemSp = (c == col) ? ResizeBv(final_output2, INPUT_BITS) : existingElemSp;
+                                auto elemAcc = (c == col) ? ResizeBv(final_output2, ACC_BITS) : existingElemAcc;
                                 if (c == 0) { 
                                     newRowSp = elemSp; 
                                     newRowAcc = elemAcc; 
@@ -568,12 +558,15 @@ namespace gemmini{
                             auto should_transfer = Ite((BvConst(row, 16) < dest_row) & (BvConst(col, 16) < dest_col), SYMB_TRUE, SYMB_FALSE);
                             auto existingElemSp = Extract(destRowSp, (col + 1) * INPUT_BITS - 1, col * INPUT_BITS);
                             auto existingElemAcc = Extract(destRowAcc, (col + 1) * ACC_BITS - 1, col * ACC_BITS);
+                            auto C_elem = sys_array[row][col]->C_reg_out;
+                            auto shifted_output = C_elem >> right_shift;
+                            auto final_output = Ite(ReLU, Relu(shifted_output), shifted_output);
                             if (col == 0) {
-                                newRowSp = Ite(should_transfer, ResizeBv(sys_array[row][col]->C_reg_out, INPUT_BITS), existingElemSp);
-                                newRowAcc = Ite(should_transfer, ResizeBv(sys_array[row][col]->C_reg_out, ACC_BITS), existingElemAcc);
+                                newRowSp = Ite(should_transfer, ResizeBv(final_output, INPUT_BITS), existingElemSp);
+                                newRowAcc = Ite(should_transfer, ResizeBv(final_output, ACC_BITS), existingElemAcc);
                             } else {
-                                newRowSp = Ite(should_transfer, Concat(ResizeBv(sys_array[row][col]->C_reg_out, INPUT_BITS), newRowSp), Concat(existingElemSp, newRowSp));
-                                newRowAcc = Ite(should_transfer, Concat(ResizeBv(sys_array[row][col]->C_reg_out, ACC_BITS), newRowAcc), Concat(existingElemAcc, newRowAcc));
+                                newRowSp = Ite(should_transfer, Concat(ResizeBv(final_output, INPUT_BITS), newRowSp), Concat(existingElemSp, newRowSp));
+                                newRowAcc = Ite(should_transfer, Concat(ResizeBv(final_output, ACC_BITS), newRowAcc), Concat(existingElemAcc, newRowAcc));
                             }
                         }
                         scratchpad_next = Ite(os_mode & (destination == BvConst(0, 1)) & write_cycle,

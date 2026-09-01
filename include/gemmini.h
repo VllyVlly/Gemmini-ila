@@ -205,10 +205,30 @@ namespace gemmini{
     };
 
     // Helper Functions
-    ExprRef ResizeBv(const ExprRef& e, unsigned target_width);
+    inline ExprRef ResizeBv(const ExprRef& e, unsigned target_width){
+        unsigned cur_width = e.bit_width(); 
+        if (cur_width == target_width) {
+            return e;                      
+        } else if (cur_width < target_width) {
+            return ZExt(e, target_width);  // widening
+        } else {
+            return Extract(e, target_width - 1, 0); // narrowing (truncate high bits)
+        }
+    }
     
     inline uint64_t getBitWidth(DataType dataType){
         return static_cast<uint64_t>(dataType);
+    }
+
+    inline ExprRef Relu(const ExprRef& x) {
+        auto zero = BvConst(0, x.bit_width());   
+        auto is_neg = (x < zero);                
+        return Ite(is_neg, zero, x);
+    }
+
+    inline ExprRef ScaleBv(const ExprRef& acc_value, const ExprRef& acc_scale, unsigned input_bitwidth) {      
+        ExprRef scaled = ResizeBv(acc_value * acc_scale, input_bitwidth);
+        return scaled;
     }
 
 }
