@@ -1,12 +1,12 @@
-#include "test_helpers.h"
 #include "gemmini.h"
+#include "test_helpers.h"
 
 using namespace ilang;
 using namespace gemmini;
 
-void test_mvin(Gemmini& gem){
-    CHECK("mvin moves from DRAM to scratchpad", gem, {"config_mvin", "mvin", "mvin_step"}, 
-    [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
+void test_mvin(Gemmini& gem)
+{
+    CHECK("mvin moves from DRAM to scratchpad", gem, { "config_mvin", "mvin", "mvin_step" }, [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
         
         // Set configs first
         uint64_t rs1_val = 0;
@@ -25,18 +25,16 @@ void test_mvin(Gemmini& gem){
         // Set rs1 as DRAM address
         cstr_step_bv(s, u, ctx, gem.rs1, 0x0000000000001000, 64, 1);
         // Set scratchpad destination address as 0x2000, and move 1 row and 1 column
-        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1);
-    }, 
+        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1); },
 
-    [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
+        [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = HexToDecimalString(TO_STR(gem.scratchpad.Load(0x00002000), 3, u, mdl));
-        EXPECT_TRUE(result == "42");
-    });
+        EXPECT_TRUE(result == "42"); });
 }
 
-void test_mvout(Gemmini& gem){
-    CHECK("mvout moves from scratchpad to DRAM", gem, {"config_mvout", "mvout", "mvout_step"}, 
-    [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
+void test_mvout(Gemmini& gem)
+{
+    CHECK("mvout moves from scratchpad to DRAM", gem, { "config_mvout", "mvout", "mvout_step" }, [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
 
         // Set configs first
         uint64_t rs1_val = 0;
@@ -62,11 +60,9 @@ void test_mvout(Gemmini& gem){
         // Set rs1 as DRAM destination address
         cstr_step_bv(s, u, ctx, gem.rs1, 0x0000000000001000, 64, 1);
         // Set rs2 as scratchpad source address and 1 row, 1 column
-        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1);
-    }, 
+        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1); },
 
-    [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
+        [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = HexToDecimalString(TO_STR(gem.DRAM.Load(0x0000000000001000), 3, u, mdl));
-        EXPECT_TRUE(result == "42");
-    });
+        EXPECT_TRUE(result == "42"); });
 }
