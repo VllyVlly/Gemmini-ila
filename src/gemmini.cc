@@ -240,7 +240,8 @@ namespace gemmini{
                         auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH);
 
                         auto elem_input = Extract(current_row_input, (elem + 1) * INPUT_BITS - 1, elem * INPUT_BITS);
-                        auto elem_acc = Extract(current_row_acc, (elem + 1) * ACC_BITS - 1, elem * ACC_BITS);
+                        auto pre_scaled_acc = Extract(current_row_acc, (elem + 1) * ACC_BITS - 1, elem * ACC_BITS);
+                        auto elem_acc = ScaleBv(pre_scaled_acc, scalar, INPUT_BITS);
 
                         auto update = Ite(BvConst(elem, 16) < mvout_col_num, SYMB_TRUE, SYMB_FALSE);
 
