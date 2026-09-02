@@ -12,9 +12,9 @@ void test_matmul_preload(Gemmini& gem)
         uint64_t rs1_val = 0;
         rs1_val |= 0;                    // bits 1:0 = 00 for config_ex
         rs1_val |= (1ULL << 2);          // bit 2 = 1 (WS mode)
-        rs1_val |= (0ULL << 3);          // bit 3 = 1 (ReLU off)
+        rs1_val |= (0ULL << 3);          // bit 3 = 0 (ReLU off)
         rs1_val |= (0ULL << 8);          // bit 8 = 0 (A transpose off)
-        rs1_val |= (0ULL << 9);          // bit 9 = 1 (B transpose off)
+        rs1_val |= (0ULL << 9);          // bit 9 = 0 (B transpose off)
         rs1_val |= (1ULL << 16);         // bits 31:16 = 1 (A stride)
         rs1_val |= (0x3F800000ULL << 32); // bits 63:32 = 1.0f
         
@@ -32,9 +32,9 @@ void test_matmul_preload(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0302, 16, 1); // row1: 2 3
         
         // Set B/D source address as 0x00000000, load 2 x 2
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
         // Set C destination address as 0x00001000
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1); },
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
             auto dest_addr = TO_STR(gem.dest_addr, 2, u, mdl);
@@ -74,6 +74,8 @@ void test_compute_preload_OS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
             cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
 
+            cstr_step_bool(s, u, ctx, gem.busy, false, 0);
+
             // Load data to scratchpad
             // Matrix B/D
             // 0 0
@@ -82,9 +84,9 @@ void test_compute_preload_OS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1); // row1: 0 0
 
             // Set D/B source address as 0x00000000, load 2 x 2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
             // Set C destination address as 0x00001000
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
             // Load matrix A and B/D
             // Matrix A
@@ -99,8 +101,8 @@ void test_compute_preload_OS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0001, 16, 2); // row1: 1 0
 
             // Set operands
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -136,6 +138,8 @@ void test_compute_preload_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
             cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
 
+            cstr_step_bool(s, u, ctx, gem.busy, false, 0);
+
             // Load data to scratchpad
             // Matrix B
             // 1 0
@@ -144,9 +148,9 @@ void test_compute_preload_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0001, 16, 1); // row1: 1 0
 
             // Set B source address as 0x00000000, load 2 x 2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
             // Set C destination address as 0x00001000
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
             // Load matrix A and D
             // Matrix A
@@ -161,8 +165,8 @@ void test_compute_preload_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2); // row1: 0 0
 
             // Set operands
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -196,13 +200,14 @@ void test_compute_preload_OS_A_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Preload D = 0 0 / 0 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0000, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A (physical, pre-transpose)
         // 1 2
@@ -216,8 +221,8 @@ void test_compute_preload_OS_A_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0001, 16, 2); // row0: 1 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0100, 16, 2); // row1: 0 1
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -251,13 +256,14 @@ void test_compute_preload_OS_B_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Preload D = 0 0 / 0 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0000, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A = identity
         // 1 0
@@ -271,8 +277,8 @@ void test_compute_preload_OS_B_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0001, 16, 2); // row0: 1 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0002, 16, 2); // row1: 2 0
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -306,13 +312,14 @@ void test_compute_preload_OS_AB_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Preload D = 0 0 / 0 0
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0000, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A (physical, pre-transpose)
         // 1 2
@@ -326,8 +333,8 @@ void test_compute_preload_OS_AB_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0001, 16, 2);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0002, 16, 2);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -361,6 +368,7 @@ void test_compute_preload_WS_A_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Matrix B (weight, preloaded stationary) = identity
         // 1 0
@@ -368,8 +376,8 @@ void test_compute_preload_WS_A_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0001, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0100, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A (physical, pre-transpose)
         // 1 2
@@ -381,8 +389,8 @@ void test_compute_preload_WS_A_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0000, 16, 2);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -417,6 +425,7 @@ void test_compute_preload_WS_B_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Matrix B (weight, preloaded stationary, physical pre-transpose)
         // 1 0
@@ -424,8 +433,8 @@ void test_compute_preload_WS_B_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0001, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0002, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A = identity
         // 1 0
@@ -437,8 +446,8 @@ void test_compute_preload_WS_B_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0000, 16, 2);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -472,6 +481,7 @@ void test_compute_preload_WS_AB_transpose(Gemmini& gem)
 
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Matrix B (weight, preloaded stationary, physical pre-transpose)
         // 1 0
@@ -479,8 +489,8 @@ void test_compute_preload_WS_AB_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000000), 0x0001, 16, 1);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0002, 16, 1);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Matrix A (physical, pre-transpose)
         // 1 2
@@ -492,8 +502,8 @@ void test_compute_preload_WS_AB_transpose(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003000), 0x0000, 16, 2);
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2);
 
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -512,7 +522,7 @@ void test_compute_preload_WS_AB_transpose(Gemmini& gem)
 
 void test_compute_accumulate_OS(Gemmini& gem)
 {
-    CHECK("Accumulated calculation of two arrays of DIM 2x2", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.accumulated", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step" },
+    CHECK("Accumulated calculation of two arrays of DIM 2x2 OS", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.accumulated", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step" },
 
         [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
         uint64_t rs1_val = 0;
@@ -529,6 +539,7 @@ void test_compute_accumulate_OS(Gemmini& gem)
         
         cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
         cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+        cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
         // Load data to scratchpad
         // Matrix D
@@ -538,9 +549,9 @@ void test_compute_accumulate_OS(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1); // row1: 0 0
         
         // Set D source address as 0x00000000, load 2 x 2
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
         // Set C destination address as 0x00001000
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
         // Load matrix A and B
         // Matrix A
@@ -555,12 +566,12 @@ void test_compute_accumulate_OS(Gemmini& gem)
         cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0001, 16, 2); // row1: 1 0
 
         // Set operands
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2);
     
         // Accumulate instruction
-        cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 7);
-        cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 7); },
+        cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 7);
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 7); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -578,7 +589,7 @@ void test_compute_accumulate_OS(Gemmini& gem)
 
 void test_compute_accumulate_WS(Gemmini& gem)
 {
-    CHECK("Preload calculation of two arrays of DIM 2x2", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.accumulated", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step" },
+    CHECK("Accumulated calculation of two arrays of DIM 2x2 WS", gem, { "config_ex", "matmul.preload", "matmul.compute.preloaded", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.preloaded_step", "matmul.compute.accumulated", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step", "matmul.compute.accumulated_step" },
 
         [&](ilang::IlaZ3Unroller& u, z3::solver& s, z3::context& ctx) {
             uint64_t rs1_val = 0;
@@ -595,6 +606,7 @@ void test_compute_accumulate_WS(Gemmini& gem)
 
             cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
             cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+            cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
             // Load data to scratchpad
             // Matrix B
@@ -604,9 +616,9 @@ void test_compute_accumulate_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0001, 16, 1); // row1: 1 0
 
             // Set B source address as 0x00000000, load 2 x 2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
             // Set C destination address as 0x00001000
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
             // Load matrix A and D
             // Matrix A
@@ -621,11 +633,11 @@ void test_compute_accumulate_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2); // row1: 0 0
 
             // Set operands
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2);
 
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 7);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 7); },
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 7);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 7); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -660,6 +672,7 @@ void test_compute_atomic_OS(Gemmini& gem)
 
             cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
             cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+            cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
             // Load data to scratchpad
             // Matrix B/D
@@ -669,9 +682,9 @@ void test_compute_atomic_OS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0000, 16, 1); // row1: 0 0
 
             // Set D/B source address as 0x00000000, load 2 x 2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
             // Set C destination address as 0x00001000
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
             // Load matrix A and B/D
             // Matrix A
@@ -686,8 +699,8 @@ void test_compute_atomic_OS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0001, 16, 2); // row1: 1 0
 
             // Set operands: A source addr, B/D source addr, both 2x2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -722,6 +735,7 @@ void test_compute_atomic_WS(Gemmini& gem)
 
             cstr_step_bv(s, u, ctx, gem.rs1, rs1_val, 64, 0);
             cstr_step_bv(s, u, ctx, gem.rs2, rs2_val, 64, 0);
+            cstr_step_bool(s, u, ctx, gem.busy, false, 0);
 
             // Load data to scratchpad
             // Matrix B
@@ -731,9 +745,9 @@ void test_compute_atomic_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00000001), 0x0001, 16, 1); // row1: 1 0
 
             // Set B source address as 0x00000000, load 2 x 2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00000000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00000000, 2, 2), 64, 1);
             // Set C destination address as 0x00001000
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00001000, 2, 2), 64, 1);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00001000, 2, 2), 64, 1);
 
             // Load matrix A and D
             // Matrix A
@@ -748,8 +762,8 @@ void test_compute_atomic_WS(Gemmini& gem)
             cstr_step_bv(s, u, ctx, gem.scratchpad.Load(0x00003001), 0x0000, 16, 2); // row1: 0 0
 
             // Set operands: A source addr, B/D source addr, both 2x2
-            cstr_step_bv(s, u, ctx, gem.rs1, build_preload_rs(0x00002000, 2, 2), 64, 2);
-            cstr_step_bv(s, u, ctx, gem.rs2, build_preload_rs(0x00003000, 2, 2), 64, 2); },
+            cstr_step_bv(s, u, ctx, gem.rs1, build_rs(0x00002000, 2, 2), 64, 2);
+            cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x00003000, 2, 2), 64, 2); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         // Expect
@@ -765,14 +779,15 @@ void test_compute_atomic_WS(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
+// Not done
 bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int stepped_steps)
 {
 
     std::cout << "[1] Building atomic and stepped ILA models...\n";
 
     // Build both models
-    Gemmini atomic { Cfg };
-    Gemmini stepped { Cfg };
+    Gemmini atomic { Cfg, "gematomic" };
+    Gemmini stepped { Cfg, "gemstepped" };
 
     atomic.AddInstructions();
     stepped.AddInstructions();
@@ -788,10 +803,10 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     // Get key states for both models
     // Atomic model states
 
-    auto rs1_atomic = atomic_ila.state("rs1");
-    auto rs2_atomic = atomic_ila.state("rs2");
-    auto rs1_stepped = stepped_ila.state("rs1");
-    auto rs2_stepped = stepped_ila.state("rs2");
+    auto rs1_atomic = atomic_ila.input("rs1");
+    auto rs2_atomic = atomic_ila.input("rs2");
+    auto rs1_stepped = stepped_ila.input("rs1");
+    auto rs2_stepped = stepped_ila.input("rs2");
 
     auto a_atomic = atomic_ila.state("A_addr");
     auto b_atomic = atomic_ila.state("B_D_addr");
@@ -834,14 +849,20 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     auto A_stride_stepped = stepped_ila.state("A_stride");
     auto scalar_stepped = stepped_ila.state("scalar");
     auto acc_type_stepped = stepped_ila.state("acc_type");
-
+    auto busy_stepped = stepped_ila.state("busy");
 
     // ----- 2. Unroll both models -----
     std::cout << "[2] Unrolling models...\n";
     z3::context c;
     IlaZ3Unroller unroller(c);
 
+    auto dim_bv = BvConst(Cfg.DIM, 16);
     // Atomic model: one instruction
+    unroller.AddInitPred(A_row_atomic <= dim_bv);
+    unroller.AddInitPred(A_col_atomic <= dim_bv);
+    unroller.AddInitPred(BD_row_atomic <= dim_bv);
+    unroller.AddInitPred(BD_col_atomic <= dim_bv);
+
     unroller.AddStepPred(0, cmd_atomic == BvConst(1, 3)); // compute command
     auto cstr_atomic = unroller.UnrollMonoConn(atomic_ila, atomic_steps);
     unroller.ClearInitPred();
@@ -849,6 +870,12 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     unroller.ClearGlobPred();
 
     // Stepped model: multiple steps
+    unroller.AddInitPred(A_row_atomic <= dim_bv);
+    unroller.AddInitPred(A_col_atomic <= dim_bv);
+    unroller.AddInitPred(BD_row_atomic <= dim_bv);
+    unroller.AddInitPred(BD_col_atomic <= dim_bv);
+
+    unroller.AddInitPred(busy_stepped == BoolConst(false));
     unroller.AddStepPred(0, cmd_stepped == BvConst(4, 3)); // start compute
     for (int k = 1; k < stepped_steps; k++) {
         unroller.AddStepPred(k, cmd_stepped == BvConst(4, 3)); // stay in compute
@@ -870,7 +897,7 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     auto same_BD_row = unroller.Equal(BD_row_atomic, 0, BD_row_stepped, 0);
     auto same_BD_col = unroller.Equal(BD_col_atomic, 0, BD_col_stepped, 0);
     auto same_dataflow = unroller.Equal(dataflow_atomic, 0, dataflow_stepped, 0);
-    
+
     auto same_A_T = unroller.Equal(A_T_atomic, 0, A_T_stepped, 0);
     auto same_B_T = unroller.Equal(B_T_atomic, 0, B_T_stepped, 0);
     auto same_right_shift = unroller.Equal(right_shift_atomic, 0, right_shift_stepped, 0);
@@ -882,12 +909,34 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     auto same_rs1 = unroller.Equal(rs1_atomic, 0, rs1_stepped, 0);
     auto same_rs2 = unroller.Equal(rs2_atomic, 0, rs2_stepped, 0);
 
-    auto same_inputs = same_A && same_B && same_dest && 
-                   same_A_row && same_A_col && 
-                   same_BD_row && same_BD_col &&
-                   same_dataflow && same_A_T && same_B_T &&
-                   same_right_shift && same_activation &&
-                   same_A_stride && same_scalar && same_acc_type && same_rs1 && same_rs2;
+    auto same_scratchpad = unroller.Equal(scratchpad_atomic, 0, scratchpad_stepped, 0);
+    auto same_accumulator = unroller.Equal(accumulator_atomic, 0, accumulator_stepped, 0);
+
+    z3::expr same_pe_states = c.bool_val(true);
+
+    for (size_t i = 0; i < Cfg.DIM; ++i) {
+        for (size_t j = 0; j < Cfg.DIM; ++j) {
+            // Build state names matching the PE constructor format
+            std::string pe_prefix = "_" + std::to_string(i) + "_" + std::to_string(j);
+
+            auto a_reg_atomic = atomic_ila.state("PE" + pe_prefix + "_A");
+            auto a_reg_stepped = stepped_ila.state("PE" + pe_prefix + "_A");
+
+            auto bd_reg_atomic = atomic_ila.state("PE" + pe_prefix + "_B_D");
+            auto bd_reg_stepped = stepped_ila.state("PE" + pe_prefix + "_B_D");
+
+            auto stat_reg_atomic = atomic_ila.state("PE" + pe_prefix + "_stat");
+            auto stat_reg_stepped = stepped_ila.state("PE" + pe_prefix + "_stat");
+
+            auto c_reg_atomic = atomic_ila.state("PE" + pe_prefix + "_C_out");
+            auto c_reg_stepped = stepped_ila.state("PE" + pe_prefix + "_C_out");
+
+            // Force initial state equivalence at step 0
+            same_pe_states = same_pe_states && unroller.Equal(a_reg_atomic, 0, a_reg_stepped, 0) && unroller.Equal(bd_reg_atomic, 0, bd_reg_stepped, 0) && unroller.Equal(stat_reg_atomic, 0, stat_reg_stepped, 0) && unroller.Equal(c_reg_atomic, 0, c_reg_stepped, 0);
+        }
+    }
+
+    auto same_inputs = same_A && same_B && same_dest && same_A_row && same_A_col && same_BD_row && same_BD_col && same_dataflow && same_A_T && same_B_T && same_right_shift && same_activation && same_A_stride && same_scalar && same_acc_type && same_rs1 && same_rs2 && same_scratchpad && same_accumulator && same_pe_states;
 
     // ----- 4. Check outputs match at final step -----
     auto eq_scratchpad = unroller.Equal(scratchpad_atomic, atomic_steps,
@@ -922,14 +971,19 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
         s.add(cstr_stepped);
         s.add(same_inputs);
         s.add(!agree); // Negate agreement
+
         auto r = s.check();
         std::cout << "  Equivalence (no counterexample): " << r << "\n";
         equivalent = (r == z3::unsat);
+        std::ofstream out("counterexample.smt2");
+        out << s.get_model();
+        out.close();
     }
 
     std::cout << "\n=== RESULT ===\n";
     if (equivalent) {
         std::cout << "✅ PASS: Atomic and stepped models are EQUIVALENT\n";
+
     } else {
         std::cout << "❌ FAIL: Atomic and stepped models are NOT equivalent\n";
     }

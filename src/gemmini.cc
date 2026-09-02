@@ -5,8 +5,8 @@
 
 namespace gemmini {
 
-Gemmini::Gemmini(cfg Cfg)
-    : m(Ila("Gemmini"))
+Gemmini::Gemmini(cfg Cfg, const std::string& name)
+    : m(Ila(name))
     ,
     // ---------- Inputs ----------
     funct(m.NewBvInput("funct", 3))
@@ -64,9 +64,9 @@ Gemmini::Gemmini(cfg Cfg)
     , B_D_row(m.NewBvState("B_D_row", 16))
     , B_D_col(m.NewBvState("B_D_col", 16))
     , cycle(m.NewBvState("cycle", 32))
-    , // arbitrary bit size?
+    , busy(m.NewBoolState("busy"))
     // ---------- Memory states --------------
-    DRAM(m.NewMemState("DRAM", DRAM_ADDR_WIDTH, DRAM_DATA_WIDTH))
+    , DRAM(m.NewMemState("DRAM", DRAM_ADDR_WIDTH, DRAM_DATA_WIDTH))
     , scratchpad(m.NewMemState("scratchpad", 32, Cfg.DIM * getBitWidth(Cfg.inputType)))
     , accumulator(m.NewMemState("accumulator", 32, Cfg.DIM * getBitWidth(Cfg.accType)))
 {
@@ -95,9 +95,7 @@ void Gemmini::AddInstructions()
     {
 
         // Data Movement
-        // rs1 is DRAM address
         {
-            // mvin
 
             // mvin start
             {
@@ -151,7 +149,7 @@ void Gemmini::AddInstructions()
                     auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
                     auto should_update = Ite(should_transfer & elem_valid, SYMB_TRUE, SYMB_FALSE);
 
-                    auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH); 
+                    auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH);
                     auto load_elem = DRAM.Load(dram_elem_addr);
 
                     auto load_elem_input = Extract(load_elem, INPUT_BITS - 1, 0);
@@ -193,7 +191,6 @@ void Gemmini::AddInstructions()
                 auto done_after = Ite(chunk_overflow & all_rows_done, SYMB_TRUE, SYMB_FALSE);
                 instr.SetUpdate(done, Ite(done_after, BoolConst(true), done));
             }
-
         }
 
         {
@@ -329,9 +326,6 @@ void Gemmini::AddInstructions()
             instr.SetUpdate(dest_col, Extract(rs2, 47, 32));
             instr.SetUpdate(dest_row, Extract(rs2, 63, 48));
 
-            // FIX: this instruction loads D in OS mode (never transposed) and B in
-            // WS mode (transposed iff B_T is set). Gate transpose on WS mode so an
-            // OS-mode preload of D can never be accidentally transposed.
             auto os_mode = (dataflow == BoolConst(false));
             auto B_transpose = (B_T == BvConst(1, 1));
             auto apply_transpose = !os_mode & B_transpose;
@@ -339,14 +333,14 @@ void Gemmini::AddInstructions()
             for (size_t i = 0; i < DIM; i++) {
                 auto& sys_row = sys_array[i];
                 for (size_t j = 0; j < DIM; j++) {
-                    // Non-transposed read: physical row i, column j (original behavior)
+                    // Non-transposed read
                     auto row_index_nt = BvConst(i, 32);
                     auto row_sp_nt = scratchpad.Load(source_addr + row_index_nt);
                     auto row_acc_nt = accumulator.Load(source_addr + row_index_nt);
                     auto elem_sp_nt = Extract(row_sp_nt, (j + 1) * INPUT_BITS - 1, j * INPUT_BITS);
                     auto elem_acc_nt = Extract(row_acc_nt, (j + 1) * ACC_BITS - 1, j * ACC_BITS);
 
-                    // Transposed read: physical row j, column i, i.e. stationary[i][j] = physical(j,i)
+                    // Transposed read
                     auto row_index_t = BvConst(j, 32);
                     auto row_sp_t = scratchpad.Load(source_addr + row_index_t);
                     auto row_acc_t = accumulator.Load(source_addr + row_index_t);
@@ -358,9 +352,6 @@ void Gemmini::AddInstructions()
 
                     auto preload_elem = Ite(Extract(source_addr, 31, 31) == BvConst(0, 1), ResizeBv(elem_sp, ACC_BITS), elem_acc);
 
-                    // FIX: bounds must swap under transpose too (mirrors in_bounds fix
-                    // in compute.preloaded_step) — the "row-count" and "col-count" of
-                    // the *used* (post-transpose) matrix are swapped from the stored one.
                     auto row_bound = Ite(apply_transpose, source_col, source_row);
                     auto col_bound = Ite(apply_transpose, source_row, source_col);
                     auto should_transfer = Ite((BvConst(i, 16) < row_bound) & (BvConst(j, 16) < col_bound), SYMB_TRUE, SYMB_FALSE);
@@ -381,29 +372,24 @@ void Gemmini::AddInstructions()
             auto BD_row = Extract(rs2, 63, 48);
 
             auto os_mode = (dataflow == BoolConst(false));
-            auto A_transpose = (A_T == BvConst(1, 1)); // ASSUMPTION: A_T exists as a sibling of B_T in config_ex
+            auto A_transpose = (A_T == BvConst(1, 1)); 
             auto B_transpose = (B_T == BvConst(1, 1));
 
-            // --- Bounds, mirroring the row_bound/col_bound swap pattern from matmul.preload ---
-            // A convention (same asymmetry as documented for A_1): A_T=1 -> natural row-major
-            // (physical row=i, col=k); A_T=0 (default) -> pre-transposed (physical row=k, col=i).
             auto A_i_bound = Ite(A_transpose, A_row_, A_col_); // bounds output row i
             auto A_k_bound = Ite(A_transpose, A_col_, A_row_); // bounds contraction index k
 
-            // B convention (OS mode direct read), same as matmul.preload's B_T handling:
+            
             auto B_k_bound = Ite(B_transpose, BD_col, BD_row); // bounds contraction index k
             auto B_j_bound = Ite(B_transpose, BD_row, BD_col); // bounds output col j
 
-            // D is never transposed (decoupled from transpose muxes) -> straight bounds.
             auto D_i_bound = BD_row;
             auto D_j_bound = BD_col;
             auto new_scratchpad = scratchpad;
-            auto new_accumulator = accumulator;     
+            auto new_accumulator = accumulator;
 
             for (size_t i = 0; i < DIM; i++) {
                 auto& sys_row = sys_array[i];
 
-                // Row buffers for the writeback, built up per-column below.
                 std::vector<ExprRef> sp_row_elems(DIM, BvConst(0, INPUT_BITS));
                 std::vector<ExprRef> acc_row_elems(DIM, BvConst(0, ACC_BITS));
                 std::vector<ExprRef> row_write_valid(DIM, SYMB_FALSE);
@@ -416,11 +402,7 @@ void Gemmini::AddInstructions()
                         auto a_row_sp = scratchpad.Load(A_scratchpad_addr + a_addr_row);
                         auto a_row_acc = accumulator.Load(A_scratchpad_addr + a_addr_row);
                         auto a_col_off = Ite(A_transpose, BvConst(k, 32), BvConst(i, 32));
-                        // Extract requires compile-time bit indices; since a_col_off is symbolic here in
-                        // general you'd need a mux over the DIM possible extract positions. Since A_transpose
-                        // only changes WHICH of {k,i} is used, and both are compile-time in this unrolled
-                        // loop, build both extractions and Ite between them instead of an Extract-by-variable:
-                        auto a_elem_default = Extract(a_row_sp, (i + 1) * INPUT_BITS - 1, i * INPUT_BITS); // A_T=0: col=i
+                        auto a_elem_default = Extract(a_row_sp, (i + 1) * INPUT_BITS - 1, i * INPUT_BITS); 
                         auto a_elem_T = Extract(scratchpad.Load(A_scratchpad_addr + BvConst(i, 32)),
                             (k + 1) * INPUT_BITS - 1, k * INPUT_BITS); // A_T=1: row=i,col=k
                         auto a_elem_default_acc = Extract(a_row_acc, (i + 1) * ACC_BITS - 1, i * ACC_BITS);
@@ -431,7 +413,6 @@ void Gemmini::AddInstructions()
                         auto a_from_acc = Ite(A_transpose, a_elem_T_acc, a_elem_default_acc);
                         auto a_elem = Ite(Extract(A_scratchpad_addr, 31, 31) == BvConst(0, 1), a_from_sp, a_from_acc);
 
-                        // B element, OS mode: read directly from BD address, same swap convention as preload's B_T
                         auto b_addr_row_nt = BvConst(k, 32);
                         auto b_addr_row_t = BvConst(j, 32);
                         auto b_row_sp = scratchpad.Load(BD_scratchpad_addr + Ite(B_transpose, b_addr_row_t, b_addr_row_nt));
@@ -450,10 +431,10 @@ void Gemmini::AddInstructions()
 
                         auto k_valid = Ite((BvConst(k, 16) < A_k_bound) & (BvConst(k, 16) < B_k_bound),
                             SYMB_TRUE, SYMB_FALSE);
-                        auto product = a_elem * b_elem; // both already ACC_BITS-wide
+                        auto product = a_elem * b_elem; 
                         os_sum = os_sum + Ite(k_valid, product, BvConst(0, ACC_BITS));
                     }
-                    auto new_val_os = sys_row[j]->stationary_reg + os_sum; // seed (D) was preloaded here already
+                    auto new_val_os = sys_row[j]->stationary_reg + os_sum; 
                     auto out_valid_os = Ite((BvConst(i, 16) < A_i_bound) & (BvConst(j, 16) < B_j_bound),
                         SYMB_TRUE, SYMB_FALSE);
 
@@ -470,16 +451,12 @@ void Gemmini::AddInstructions()
                         auto a_from_acc = Ite(A_transpose, a_elem_T_acc, a_elem_default_acc);
                         auto a_elem = Ite(Extract(A_scratchpad_addr, 31, 31) == BvConst(0, 1), a_from_sp, a_from_acc);
 
-                        // Weight comes from the PE array itself (already loaded by matmul.preload),
-                        // not from scratchpad. It was stored ACC_BITS-wide (resized), take the low
-                        // INPUT_BITS back out for the multiply.
                         auto b_elem_weight = ResizeBv(Extract(sys_array[k][j]->stationary_reg, INPUT_BITS - 1, 0), ACC_BITS);
 
                         auto k_valid = Ite(BvConst(k, 16) < A_k_bound, SYMB_TRUE, SYMB_FALSE);
                         auto product = a_elem * b_elem_weight;
                         ws_sum = ws_sum + Ite(k_valid, product, BvConst(0, ACC_BITS));
                     }
-                    // D seed, streamed via the shared BD port in WS mode — never transposed.
                     auto d_elem_sp = ResizeBv(Extract(scratchpad.Load(BD_scratchpad_addr + BvConst(i, 32)),
                                                   (j + 1) * INPUT_BITS - 1, j * INPUT_BITS),
                         ACC_BITS);
@@ -490,7 +467,6 @@ void Gemmini::AddInstructions()
                     auto new_val_ws = d_elem + ws_sum;
                     auto out_valid_ws = Ite((BvConst(i, 16) < D_i_bound) & (BvConst(j, 16) < D_j_bound) & (BvConst(i, 16) < A_i_bound), SYMB_TRUE, SYMB_FALSE);
 
-                    // ---------- Combine modes ----------
                     auto combined_val = Ite(os_mode, new_val_os, new_val_ws);
                     auto combined_valid = Ite(os_mode, out_valid_os, out_valid_ws);
 
@@ -499,18 +475,17 @@ void Gemmini::AddInstructions()
                         Ite(os_mode & combined_valid, new_val_os, sys_row[j]->stationary_reg));
 
                     // ---------- Right shift (OS mode only) applied when narrowing to scratchpad width ----------
-                    auto shift_amt = ResizeBv(right_shift, ACC_BITS); // ASSUMPTION: state var name for the OS shift amount
-                    auto os_shifted = new_val_os >> shift_amt; // ASSUMPTION: arithmetic-right-shift helper name
+                    auto shift_amt = ResizeBv(right_shift, ACC_BITS); 
+                    auto os_shifted = new_val_os >> shift_amt; 
                     auto elem_sp_new = Ite(os_mode, Extract(os_shifted, INPUT_BITS - 1, 0),
-                        Extract(new_val_ws, INPUT_BITS - 1, 0)); // WS: plain truncate, no shift
-                    auto elem_acc_new = combined_val; // full precision to accumulator, no shift in either mode
+                        Extract(new_val_ws, INPUT_BITS - 1, 0)); 
+                    auto elem_acc_new = combined_val; 
 
                     row_write_valid[j] = combined_valid;
                     sp_row_elems[j] = elem_sp_new;
                     acc_row_elems[j] = elem_acc_new;
                 }
 
-                // ---------- Writeback: one row, non-destructive per element, target chosen by dest_addr[31] ----------
                 auto to_scratchpad = (Extract(dest_addr, 31, 31) == BvConst(0, 1));
 
                 auto old_sp_row = scratchpad.Load(dest_addr + BvConst(i, 32));
@@ -532,12 +507,12 @@ void Gemmini::AddInstructions()
                     acc_row_val = (j == 0) ? acc_elem : Concat(acc_elem, acc_row_val);
                 }
 
-                new_scratchpad  = new_scratchpad.Store(dest_addr + BvConst(i, 32), sp_row_val);
+                new_scratchpad = new_scratchpad.Store(dest_addr + BvConst(i, 32), sp_row_val);
                 new_accumulator = new_accumulator.Store(dest_addr + BvConst(i, 32), acc_row_val);
             }
 
-            instr.SetUpdate(scratchpad, new_scratchpad);
-            instr.SetUpdate(accumulator, new_accumulator);
+            instr.SetUpdate(scratchpad, Ite(dest_addr != ALL_HIGH_BITS, new_scratchpad, scratchpad));
+            instr.SetUpdate(accumulator, Ite(dest_addr != ALL_HIGH_BITS, new_accumulator, accumulator));
         }
 
         {
@@ -546,7 +521,7 @@ void Gemmini::AddInstructions()
                 // matmul.compute.preloaded
                 InstrRef instr = m.NewInstr("matmul.compute.preloaded");
                 auto decode = matmul_compute_preloaded;
-                instr.SetDecode(funct == decode);
+                instr.SetDecode(funct == decode & (busy == BoolConst(false)));
                 auto A_scratchpad_addr = Extract(rs1, 31, 0);
                 auto A_col_ = Extract(rs1, 47, 32);
                 auto A_row_ = Extract(rs1, 63, 48);
@@ -561,14 +536,16 @@ void Gemmini::AddInstructions()
                 instr.SetUpdate(B_D_row, BD_row);
                 instr.SetUpdate(B_D_col, BD_col);
                 instr.SetUpdate(cycle, BvConst(0, 32));
+                instr.SetUpdate(busy, BoolConst(true));
             }
 
             {
 
                 // matmul.compute.preloaded step
                 InstrRef instr = m.NewInstr("matmul.compute.preloaded_step");
-                auto decode = matmul_compute_preloaded;
-                instr.SetDecode(funct == decode & (cycle <= BvConst((2 * DIM) - 1, 32)));
+                auto decode = funct == matmul_compute_preloaded & (busy == BoolConst(true))
+                    & (cycle <= BvConst((2 * DIM) - 1, 32));
+                instr.SetDecode(decode);
                 auto os_mode = (dataflow == BoolConst(false));
                 auto write_cycle = os_mode & (cycle == BvConst((2 * DIM) - 1, 32));
                 auto destination = Extract(dest_addr, 31, 31);
@@ -580,9 +557,6 @@ void Gemmini::AddInstructions()
                 auto B_transpose = B_T == BvConst(1, 1);
                 auto ReLU = activation_func == BvConst(1, 1);
 
-                // FIX: in_bounds must account for the active region of the *fed* operand,
-                // which changes shape under transpose. A_transpose feeds A_col "rows";
-                // B_transpose feeds B_D_row "columns".
                 auto A_active_rows = Ite(A_transpose, ZExt(A_col, 16), A_row);
                 auto B_active_cols = Ite(B_transpose, ZExt(B_D_row, 16), B_D_col);
 
@@ -609,10 +583,6 @@ void Gemmini::AddInstructions()
                                     row * INPUT_BITS),
                                 BvConst(0, INPUT_BITS));
 
-                            // FIX: "row" = output row (m) in OS, but = contraction index (k) in WS.
-                            // A_1/A_2 therefore swap which one is "natural" vs "transposed" depending
-                            // on mode. Keep OS's existing (already-correct) mapping; flip it for WS
-                            // so A_T means the same thing (0=natural, 1=transposed) in both modes.
                             auto A_in_os = Ite(A_transpose, A_2, A_1);
                             auto A_in_ws = Ite(A_transpose, A_1, A_2);
                             A_in = Ite(os_mode, A_in_os, A_in_ws);
@@ -627,8 +597,6 @@ void Gemmini::AddInstructions()
                                     (col + 1) * INPUT_BITS - 1,
                                     col * INPUT_BITS),
                                 BvConst(0, INPUT_BITS));
-                            // FIX: keep col-based skew and col-pitched address (mirror of A_2's fix);
-                            // was incorrectly keyed off `row` (which is 0 in this scope).
                             auto k_col = cycle - BvConst(col, 32);
                             auto B_2 = Ite(cycle >= BvConst(col, 32) & k_col < ZExt(B_D_col, 32) & !write_cycle,
                                 Extract(Lshr(scratchpad.Load(B_D_addr + BvConst(col, GEMMINI_ADDR_WIDTH)),
@@ -651,9 +619,6 @@ void Gemmini::AddInstructions()
                             Ite(os_mode & in_bounds & !write_cycle, stat_updated, sys_array[row][col]->stationary_reg));
                         auto c_os = Extract(stat_updated, OUTPUT_BITS - 1, 0);
 
-                        // D (psum) path: intentionally independent of A_transpose/B_transpose.
-                        // config_ex has no D-transpose option, so this must never route
-                        // through the A_2/B_2 transpose muxes above.
                         ExprRef psum_in = BvConst(0, ACC_BITS);
                         if (row == 0) {
                             auto k_p = cycle - BvConst(col, 32);
@@ -675,7 +640,7 @@ void Gemmini::AddInstructions()
                         auto instance = cycle - row_off - col_off;
                         auto col_valid = is_last_row
                             & (cycle >= row_off + col_off)
-                            & (instance < ZExt(dest_row, 32)) // Could underflow?
+                            & (instance < ZExt(dest_row, 32))
                             & Ite((BvConst(col, 16) < dest_col), SYMB_TRUE, SYMB_FALSE);
                         auto writeAddrCol = dest_addr + instance;
 
@@ -720,8 +685,8 @@ void Gemmini::AddInstructions()
                         auto existingElemAcc = Extract(destRowAcc, (col + 1) * ACC_BITS - 1, col * ACC_BITS);
                         auto C_elem = sys_array[row][col]->C_reg_out;
                         auto C_elem_32 = ResizeBv(C_elem, 32);
-                        auto shifted_32 = C_elem_32 >> right_shift;  
-                        auto shifted_output = Extract(shifted_32, OUTPUT_BITS - 1, 0); 
+                        auto shifted_32 = C_elem_32 >> right_shift;
+                        auto shifted_output = Extract(shifted_32, OUTPUT_BITS - 1, 0);
                         auto final_output = Ite(ReLU, Relu(shifted_output), shifted_output);
                         if (col == 0) {
                             newRowSp = Ite(should_transfer, ResizeBv(final_output, INPUT_BITS), existingElemSp);
@@ -736,9 +701,10 @@ void Gemmini::AddInstructions()
                     accumulator_next = Ite(os_mode & (destination == BvConst(1, 1)) & write_cycle,
                         accumulator_next.Store(writeAddr, newRowAcc), accumulator_next);
                 }
-                instr.SetUpdate(scratchpad, Ite(os_mode, scratchpad_next, scratchpad_next2));
-                instr.SetUpdate(accumulator, Ite(os_mode, accumulator_next, accumulator_next2));
+                instr.SetUpdate(scratchpad, Ite(dest_addr != ALL_HIGH_BITS, Ite(os_mode, scratchpad_next, scratchpad_next2), scratchpad));
+                instr.SetUpdate(accumulator, Ite(dest_addr != ALL_HIGH_BITS, Ite(os_mode, accumulator_next, accumulator_next2), accumulator));
 
+                instr.SetUpdate(busy, Ite(cycle == 2 * DIM - 1, BoolConst(false), busy));
                 instr.SetUpdate(cycle, cycle + BvConst(1, 32));
             }
         }
@@ -748,7 +714,7 @@ void Gemmini::AddInstructions()
                 // matmul.compute.accumulated
                 InstrRef instr = m.NewInstr("matmul.compute.accumulated");
                 auto decode = matmul_compute_accumulated;
-                instr.SetDecode(funct == decode);
+                instr.SetDecode(funct == decode & (busy == BoolConst(false)));
                 auto A_scratchpad_addr = Extract(rs1, 31, 0);
                 auto A_col_ = Extract(rs1, 47, 32);
                 auto A_row_ = Extract(rs1, 63, 48);
@@ -763,13 +729,15 @@ void Gemmini::AddInstructions()
                 instr.SetUpdate(B_D_row, BD_row);
                 instr.SetUpdate(B_D_col, BD_col);
                 instr.SetUpdate(cycle, BvConst(0, 32));
+                instr.SetUpdate(busy, BoolConst(true));
             }
 
             {
                 // matmul.compute.accumulated step
                 InstrRef instr = m.NewInstr("matmul.compute.accumulated_step");
-                auto decode = matmul_compute_accumulated;
-                instr.SetDecode(funct == decode & (cycle <= BvConst((2 * DIM) - 1, 32)));
+                auto decode = funct == matmul_compute_accumulated & (busy == BoolConst(true))
+                    & (cycle <= BvConst((2 * DIM) - 1, 32));
+                instr.SetDecode(decode);
                 auto os_mode = (dataflow == BoolConst(false));
                 auto write_cycle = os_mode & (cycle == BvConst((2 * DIM) - 1, 32));
                 auto destination = Extract(dest_addr, 31, 31);
@@ -781,9 +749,6 @@ void Gemmini::AddInstructions()
                 auto B_transpose = B_T == BvConst(1, 1);
                 auto ReLU = activation_func == BvConst(1, 1);
 
-                // FIX: in_bounds must account for the active region of the *fed* operand,
-                // which changes shape under transpose. A_transpose feeds A_col "rows";
-                // B_transpose feeds B_D_row "columns".
                 auto A_active_rows = Ite(A_transpose, ZExt(A_col, 16), A_row);
                 auto B_active_cols = Ite(B_transpose, ZExt(B_D_row, 16), B_D_col);
 
@@ -810,10 +775,6 @@ void Gemmini::AddInstructions()
                                     row * INPUT_BITS),
                                 BvConst(0, INPUT_BITS));
 
-                            // FIX: "row" = output row (m) in OS, but = contraction index (k) in WS.
-                            // A_1/A_2 therefore swap which one is "natural" vs "transposed" depending
-                            // on mode. Keep OS's existing (already-correct) mapping; flip it for WS
-                            // so A_T means the same thing (0=natural, 1=transposed) in both modes.
                             auto A_in_os = Ite(A_transpose, A_2, A_1);
                             auto A_in_ws = Ite(A_transpose, A_1, A_2);
                             A_in = Ite(os_mode, A_in_os, A_in_ws);
@@ -828,8 +789,6 @@ void Gemmini::AddInstructions()
                                     (col + 1) * INPUT_BITS - 1,
                                     col * INPUT_BITS),
                                 BvConst(0, INPUT_BITS));
-                            // FIX: keep col-based skew and col-pitched address (mirror of A_2's fix);
-                            // was incorrectly keyed off `row` (which is 0 in this scope).
                             auto k_col = cycle - BvConst(col, 32);
                             auto B_2 = Ite(cycle >= BvConst(col, 32) & k_col < ZExt(B_D_col, 32) & !write_cycle,
                                 Extract(Lshr(scratchpad.Load(B_D_addr + BvConst(col, GEMMINI_ADDR_WIDTH)),
@@ -852,9 +811,6 @@ void Gemmini::AddInstructions()
                             Ite(os_mode & in_bounds & !write_cycle, stat_updated, sys_array[row][col]->stationary_reg));
                         auto c_os = Extract(stat_updated, OUTPUT_BITS - 1, 0);
 
-                        // D (psum) path: intentionally independent of A_transpose/B_transpose.
-                        // config_ex has no D-transpose option, so this must never route
-                        // through the A_2/B_2 transpose muxes above.
                         ExprRef psum_in = BvConst(0, ACC_BITS);
                         if (row == 0) {
                             auto k_p = cycle - BvConst(col, 32);
@@ -876,7 +832,7 @@ void Gemmini::AddInstructions()
                         auto instance = cycle - row_off - col_off;
                         auto col_valid = is_last_row
                             & (cycle >= row_off + col_off)
-                            & (instance < ZExt(dest_row, 32)) // Could underflow?
+                            & (instance < ZExt(dest_row, 32)) 
                             & Ite((BvConst(col, 16) < dest_col), SYMB_TRUE, SYMB_FALSE);
                         auto writeAddrCol = dest_addr + instance;
 
@@ -921,8 +877,8 @@ void Gemmini::AddInstructions()
                         auto existingElemAcc = Extract(destRowAcc, (col + 1) * ACC_BITS - 1, col * ACC_BITS);
                         auto C_elem = sys_array[row][col]->C_reg_out;
                         auto C_elem_32 = ResizeBv(C_elem, 32);
-                        auto shifted_32 = C_elem_32 >> right_shift;  
-                        auto shifted_output = Extract(shifted_32, OUTPUT_BITS - 1, 0); 
+                        auto shifted_32 = C_elem_32 >> right_shift;
+                        auto shifted_output = Extract(shifted_32, OUTPUT_BITS - 1, 0);
                         auto final_output = Ite(ReLU, Relu(shifted_output), shifted_output);
                         if (col == 0) {
                             newRowSp = Ite(should_transfer, ResizeBv(final_output, INPUT_BITS), existingElemSp);
@@ -937,9 +893,10 @@ void Gemmini::AddInstructions()
                     accumulator_next = Ite(os_mode & (destination == BvConst(1, 1)) & write_cycle,
                         accumulator_next.Store(writeAddr, newRowAcc), accumulator_next);
                 }
-                instr.SetUpdate(scratchpad, Ite(os_mode, scratchpad_next, scratchpad_next2));
-                instr.SetUpdate(accumulator, Ite(os_mode, accumulator_next, accumulator_next2));
+                instr.SetUpdate(scratchpad, Ite(dest_addr != ALL_HIGH_BITS, Ite(os_mode, scratchpad_next, scratchpad_next2), scratchpad));
+                instr.SetUpdate(accumulator, Ite(dest_addr != ALL_HIGH_BITS, Ite(os_mode, accumulator_next, accumulator_next2), accumulator));
 
+                instr.SetUpdate(busy, Ite(cycle == 2 * DIM - 1, BoolConst(false), busy));
                 instr.SetUpdate(cycle, cycle + BvConst(1, 32));
             }
         }

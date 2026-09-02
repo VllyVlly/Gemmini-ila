@@ -83,8 +83,8 @@ This repo does not vendor or track ILAng directly — you'll need to clone it se
    ```
 
 
-<!-- USAGE EXAMPLES -->
-## Usage
+<!-- MODELLING NOTES -->
+## Modelling Notes
 
 
 <!-- ROADMAP -->
@@ -108,12 +108,6 @@ Contributions are welcome. If you have a suggestion, please fork the repo and op
 3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
-
-
-<!-- LICENSE -->
-## License (WIP)
-
-Distributed under the project_license. See `LICENSE.txt` for more information.
 
 
 <!-- CONTACT -->

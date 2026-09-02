@@ -25,7 +25,7 @@ void test_mvin(Gemmini& gem)
         // Set rs1 as DRAM address
         cstr_step_bv(s, u, ctx, gem.rs1, 0x0000000000001000, 64, 1);
         // Set scratchpad destination address as 0x2000, and move 1 row and 1 column
-        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1); },
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x2000, 1, 1), 64, 1); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = HexToDecimalString(TO_STR(gem.scratchpad.Load(0x00002000), 3, u, mdl));
@@ -60,7 +60,7 @@ void test_mvout(Gemmini& gem)
         // Set rs1 as DRAM destination address
         cstr_step_bv(s, u, ctx, gem.rs1, 0x0000000000001000, 64, 1);
         // Set rs2 as scratchpad source address and 1 row, 1 column
-        cstr_step_bv(s, u, ctx, gem.rs2, build_mvin_rs2(0x2000, 1, 1), 64, 1); },
+        cstr_step_bv(s, u, ctx, gem.rs2, build_rs(0x2000, 1, 1), 64, 1); },
 
         [&](z3::model& mdl, ilang::IlaZ3Unroller& u) {
         auto result = HexToDecimalString(TO_STR(gem.DRAM.Load(0x0000000000001000), 3, u, mdl));

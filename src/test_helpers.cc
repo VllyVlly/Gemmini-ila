@@ -230,18 +230,8 @@ void print_test_summary()
 
 // Gemmini Helper Functions
 
-// Build rs2 for mvin/mvout: address + rows + columns
-uint64_t build_mvin_rs2(uint32_t addr, uint16_t rows, uint16_t cols)
-{
-    uint64_t rs2 = 0;
-    rs2 |= addr; // Bits 31:0
-    rs2 |= (uint64_t)cols << 32; // Bits 47:32
-    rs2 |= (uint64_t)rows << 48; // Bits 63:48
-    return rs2;
-}
-
-// Build rs1 for matmul.preload: address + rows + columns
-uint64_t build_preload_rs(uint32_t addr, uint16_t rows, uint16_t cols)
+// Build rs for mvin/mvout/preload/compute: address + rows + columns
+uint64_t build_rs(uint32_t addr, uint16_t rows, uint16_t cols)
 {
     uint64_t rs = 0;
     rs |= addr; // Bits 31:0

@@ -14,6 +14,7 @@ namespace gemmini {
 
 #define SYMB_TRUE BoolConst(true)
 #define SYMB_FALSE BoolConst(false)
+#define ALL_HIGH_BITS BvConst(4294967295, 32)
 
 // TODO CHANGE LATER
 // For now use 8-bit ints
@@ -119,15 +120,15 @@ public:
 
     Ila m;
 
-    ExprRef dataflow; // change this mode later ig lmao
+    ExprRef dataflow;
 
-    // Following are memory
-    ExprRef DRAM; // how do i model this lmao
+    // Memory States
+    ExprRef DRAM; 
     ExprRef scratchpad;
     ExprRef accumulator;
     std::vector<std::vector<std::unique_ptr<PE>>> sys_array;
 
-    // Following are config states
+    // Config states
     ExprRef shift;
     ExprRef A_stride;
     ExprRef scale;
@@ -171,7 +172,7 @@ public:
     ExprRef start_chunk;
     ExprRef done;
 
-    // matmul preload
+    // matmul computation
     ExprRef dest_addr;
     ExprRef dest_row;
     ExprRef dest_col;
@@ -184,13 +185,14 @@ public:
     ExprRef B_D_col;
 
     ExprRef cycle;
+    ExprRef busy;
 
-    // Following are input fields for decoding
+    // Decoding
     ExprRef funct;
     ExprRef rs1;
     ExprRef rs2;
 
-    Gemmini(cfg Cfg);
+    Gemmini(cfg Cfg, const std::string& name = "Gemmini");
     void AddInstructions();
 
     Ila& get()
@@ -231,7 +233,3 @@ inline ExprRef ScaleBv(const ExprRef& acc_value, const ExprRef& acc_scale, unsig
 }
 
 }
-
-// TODO
-// Do README and add better comments
-// Formal verification
