@@ -41,7 +41,7 @@ ILAng requires CMake (3.9.6 or above) and a compiler with C++17 support. To inst
   apt-get install bison flex z3 libz3-dev
   ```
 
-### Installation (WIP)
+### Installation 
 
 This repo does not vendor or track ILAng directly — you'll need to clone it separately alongside this repo before building.
 
@@ -86,6 +86,46 @@ This repo does not vendor or track ILAng directly — you'll need to clone it se
 <!-- MODELLING NOTES -->
 ## Modelling Notes
 
+In this model, DRAM elements are stored in sequential memory addresses separated by a single-element gap (stride = 1) along each row. 
+
+However, instruction configurations still utilize `memory_stride` to define the address offset between consecutive **rows** of the matrix:
+
+* **Element-to-Element (Row-wise):** Contiguous elements within the same row occupy adjacent target addresses, spaced by a default step of 1.
+* **Row-to-Row:** The starting address of row $k+1$ is determined relative to row $k$ using `memory_stride`:
+$$\text{Addr}(\text{row}_{k+1}) = \text{Addr}(\text{row}_k) + \text{memory\_stride}$$
+
+<br>
+</br>
+
+The `Gemmini` class requires a `cfg` configuration struct during initialization to parameterize the hardware layout, memory capacities, and data types of the model:
+
+```cpp
+// Instantiate with custom configurations
+gemmini::cfg my_config(
+    16, 16, 1, 1,            // tileRows, tileColumns, meshRows, meshColumns
+    4, 64 * 1024, 128 * 1024, // sp_banks, sp_capacity, acc_capacity
+    gemmini::DataType::INT8,  // inputType
+    gemmini::DataType::INT16, // outputType
+    gemmini::DataType::INT32  // accType
+);
+
+
+// Instantiate the Gemmini ILA model
+gemmini::Gemmini model(my_config, "Gemmini_Instance");
+```
+
+<br>
+</br>
+
+The model provides two distinct implementations for matrix multiplication compute instructions (`matmul_compute_preloaded`, `matmul_compute_accumulated`, and `matmul_compute_atomic`) to support both cycle-accurate analysis and high-level behavioral verification.
+
+| Feature | Stepped Version (`stepped`) | Atomic Version (`atomic`) |
+| :--- | :--- | :--- |
+| **Execution Style** | Cycle-by-cycle evaluation | Single-step execution |
+| **State Progression** | Updates processing element (PE) states, and `cycle` counters step-by-step | Computes the full matrix multiplication result instantaneously in one logical state transition |
+
+
+Both versions share the exact same instruction decoding logic, configuration register states, and underlying systolic array arithmetic definitions, allowing direct equivalence checking between the two execution models.
 
 <!-- ROADMAP -->
 ## Roadmap
@@ -95,7 +135,7 @@ This repo does not vendor or track ILAng directly — you'll need to clone it se
 - [x] Core matmul sequence instructions — `matmul.preload`, `matmul.compute.preloaded`, `matmul.compute.accumulated`
 - [ ] Add support for different data types other than unsigned integer of different bit-widths
 - [ ] Model additional Gemmini instructions (e.g. loop instructions, flush)
-- [ ] End-to-end equivalence checking against RTL
+- [ ] Fix equivalence check of atomic and stepped version of compute instructions
 
 
 <!-- CONTRIBUTING -->
