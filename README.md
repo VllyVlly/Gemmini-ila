@@ -1,19 +1,3 @@
-<a id="readme-top"></a>
-
-<!-- PROJECT SHIELDS -->
-
-
-<!-- PROJECT LOGO -->
-<br />
-<div align="center">
-  <h3 align="center">Gemmini ILA</h3>
-
-  <p align="center">
-    A formal Instruction-Level Abstraction (ILA) model of the Gemmini systolic array accelerator, built with ILAng.
-  </p>
-</div>
-
-
 <!-- ABOUT THE PROJECT -->
 ## About
 
@@ -92,10 +76,11 @@ However, instruction configurations still utilize `memory_stride` to define the 
 
 * **Element-to-Element (Row-wise):** Contiguous elements within the same row occupy adjacent target addresses, spaced by a default step of 1.
 * **Row-to-Row:** The starting address of row $k+1$ is determined relative to row $k$ using `memory_stride`:
-$$\text{Addr}(\text{row}_{k+1}) = \text{Addr}(\text{row}_k) + \text{memory\_stride}$$
 
-<br>
-</br>
+```math
+\text{Addr}(\text{row}_{k+1}) = \text{Addr}(\text{row}_k) + \text{memory\_stride}
+```
+
 
 The `Gemmini` class requires a `cfg` configuration struct during initialization to parameterize the hardware layout, memory capacities, and data types of the model:
 
@@ -114,8 +99,6 @@ gemmini::cfg my_config(
 gemmini::Gemmini model(my_config, "Gemmini_Instance");
 ```
 
-<br>
-</br>
 
 The model provides two distinct implementations for matrix multiplication compute instructions (`matmul_compute_preloaded`, `matmul_compute_accumulated`, and `matmul_compute_atomic`) to support both cycle-accurate analysis and high-level behavioral verification.
 
