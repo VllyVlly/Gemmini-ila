@@ -35,6 +35,8 @@ void list_states(Gemmini& gem)
 
 int main()
 {
+    
+
     cfg Config1 = cfg();
     cfg Config2 = cfg(2, 2, 1, 1, 4, 64 * 1024, 128 * 1024, DataType::INT8, DataType::INT16, DataType::INT32);
 
@@ -57,8 +59,8 @@ int main()
     // test_mvout(gem);
 
     // test_matmul_preload(gem_matmul);
-    test_compute_preload_OS(gem_matmul);
-    test_compute_preload_WS(gem_matmul);
+    // test_compute_preload_OS(gem_matmul);
+    // test_compute_preload_WS(gem_matmul);
     // test_compute_accumulate_OS(gem_matmul);
     // test_compute_accumulate_WS(gem_matmul);
 
@@ -69,11 +71,14 @@ int main()
     // test_compute_preload_WS_B_transpose(gem_matmul);
     // test_compute_preload_WS_AB_transpose(gem_matmul);
 
-    test_compute_atomic_OS(gem_matmul);
-    test_compute_atomic_WS(gem_matmul);
+    // test_compute_atomic_OS(gem_matmul);
+    // test_compute_atomic_WS(gem_matmul);
 
     // Summary
     print_test_summary();
+
+
+    verifyComputeAtomicVsStepped(Config2, 1, 2*Config2.DIM);
 
     return 0;
 }

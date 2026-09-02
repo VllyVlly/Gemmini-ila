@@ -20,3 +20,5 @@ void test_compute_preload_WS_AB_transpose(gemmini::Gemmini& gem);
 
 void test_compute_atomic_OS(gemmini::Gemmini& gem);
 void test_compute_atomic_WS(gemmini::Gemmini& gem);
+
+bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int stepped_steps);

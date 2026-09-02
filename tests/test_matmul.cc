@@ -765,3 +765,165 @@ void test_compute_atomic_WS(Gemmini& gem)
         EXPECT_TRUE(elem4 == "0"); });
 }
 
+bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int stepped_steps)
+{
+
+    std::cout << "[1] Building atomic and stepped ILA models...\n";
+
+    // Build both models
+    Gemmini atomic { Cfg };
+    Gemmini stepped { Cfg };
+
+    atomic.AddInstructions();
+    stepped.AddInstructions();
+
+    auto atomic_ila = atomic.get();
+    auto stepped_ila = stepped.get();
+
+    std::cout << "  Atomic:   " << atomic_ila.state_num() << " states, "
+              << atomic_ila.instr_num() << " instrs\n";
+    std::cout << "  Stepped:  " << stepped_ila.state_num() << " states, "
+              << stepped_ila.instr_num() << " instrs\n";
+
+    // Get key states for both models
+    // Atomic model states
+    auto a_atomic = atomic_ila.state("A_addr");
+    auto b_atomic = atomic_ila.state("B_D_addr");
+    auto dest_atomic = atomic_ila.state("dest_addr");
+    auto A_row_atomic = atomic_ila.state("A_row");
+    auto A_col_atomic = atomic_ila.state("A_col");
+    auto BD_row_atomic = atomic_ila.state("B_D_row");
+    auto BD_col_atomic = atomic_ila.state("B_D_col");
+    auto scratchpad_atomic = atomic_ila.state("scratchpad");
+    auto accumulator_atomic = atomic_ila.state("accumulator");
+    auto done_atomic = atomic_ila.state("done");
+    auto cmd_atomic = atomic_ila.input("funct");
+    auto dataflow_atomic = atomic_ila.state("dataflow");
+    auto A_T_atomic = atomic_ila.state("A_T");
+    auto B_T_atomic = atomic_ila.state("B_T");
+    auto right_shift_atomic = atomic_ila.state("right_shift");
+    auto activation_func_atomic = atomic_ila.state("activation_func");
+    auto A_stride_atomic = atomic_ila.state("A_stride");
+    auto scalar_atomic = atomic_ila.state("scalar");
+    auto acc_type_atomic = atomic_ila.state("acc_type");
+
+    // Stepped model states
+    auto a_stepped = stepped_ila.state("A_addr");
+    auto b_stepped = stepped_ila.state("B_D_addr");
+    auto dest_stepped = stepped_ila.state("dest_addr");
+    auto A_row_stepped = stepped_ila.state("A_row");
+    auto A_col_stepped = stepped_ila.state("A_col");
+    auto BD_row_stepped = stepped_ila.state("B_D_row");
+    auto BD_col_stepped = stepped_ila.state("B_D_col");
+    auto scratchpad_stepped = stepped_ila.state("scratchpad");
+    auto accumulator_stepped = stepped_ila.state("accumulator");
+    auto done_stepped = stepped_ila.state("done");
+    auto cmd_stepped = stepped_ila.input("funct");
+    auto cycle_stepped = stepped_ila.state("cycle");
+    auto dataflow_stepped = stepped_ila.state("dataflow");
+    auto A_T_stepped = stepped_ila.state("A_T");
+    auto B_T_stepped = stepped_ila.state("B_T");
+    auto right_shift_stepped = stepped_ila.state("right_shift");
+    auto activation_func_stepped = stepped_ila.state("activation_func");
+    auto A_stride_stepped = stepped_ila.state("A_stride");
+    auto scalar_stepped = stepped_ila.state("scalar");
+    auto acc_type_stepped = stepped_ila.state("acc_type");
+
+
+    // ----- 2. Unroll both models -----
+    std::cout << "[2] Unrolling models...\n";
+    z3::context c;
+    IlaZ3Unroller unroller(c);
+
+    // Atomic model: one instruction
+    unroller.AddStepPred(0, cmd_atomic == BvConst(1, 3)); // compute command
+    auto cstr_atomic = unroller.UnrollMonoConn(atomic_ila, atomic_steps);
+    unroller.ClearInitPred();
+    unroller.ClearStepPred();
+    unroller.ClearGlobPred();
+
+    // Stepped model: multiple steps
+    unroller.AddStepPred(0, cmd_stepped == BvConst(4, 3)); // start compute
+    for (int k = 1; k < stepped_steps; k++) {
+        unroller.AddStepPred(k, cmd_stepped == BvConst(4, 3)); // stay in compute
+    }
+    auto cstr_stepped = unroller.UnrollMonoConn(stepped_ila, stepped_steps);
+    unroller.ClearInitPred();
+    unroller.ClearStepPred();
+    unroller.ClearGlobPred();
+
+    std::cout << "test1" << '\n';
+
+    // ----- 3. Relate the two models (same inputs) -----
+    std::cout << "[3] Adding equivalence constraints...\n";
+    auto same_A = unroller.Equal(a_atomic, 0, a_stepped, 0);
+    auto same_B = unroller.Equal(b_atomic, 0, b_stepped, 0);
+    auto same_dest = unroller.Equal(dest_atomic, 0, dest_stepped, 0);
+    auto same_A_row = unroller.Equal(A_row_atomic, 0, A_row_stepped, 0);
+    auto same_A_col = unroller.Equal(A_col_atomic, 0, A_col_stepped, 0);
+    auto same_BD_row = unroller.Equal(BD_row_atomic, 0, BD_row_stepped, 0);
+    auto same_BD_col = unroller.Equal(BD_col_atomic, 0, BD_col_stepped, 0);
+    auto same_dataflow = unroller.Equal(dataflow_atomic, 0, dataflow_stepped, 0);
+    
+    auto same_A_T = unroller.Equal(A_T_atomic, 0, A_T_stepped, 0);
+    auto same_B_T = unroller.Equal(B_T_atomic, 0, B_T_stepped, 0);
+    auto same_right_shift = unroller.Equal(right_shift_atomic, 0, right_shift_stepped, 0);
+    auto same_activation = unroller.Equal(activation_func_atomic, 0, activation_func_stepped, 0);
+    auto same_A_stride = unroller.Equal(A_stride_atomic, 0, A_stride_stepped, 0);
+    auto same_scalar = unroller.Equal(scalar_atomic, 0, scalar_stepped, 0);
+    auto same_acc_type = unroller.Equal(acc_type_atomic, 0, acc_type_stepped, 0);
+
+    auto same_inputs = same_A && same_B && same_dest && 
+                   same_A_row && same_A_col && 
+                   same_BD_row && same_BD_col &&
+                   same_dataflow && same_A_T && same_B_T &&
+                   same_right_shift && same_activation &&
+                   same_A_stride && same_scalar && same_acc_type;
+
+    // ----- 4. Check outputs match at final step -----
+    auto eq_scratchpad = unroller.Equal(scratchpad_atomic, atomic_steps,
+        scratchpad_stepped, stepped_steps);
+    auto eq_accumulator = unroller.Equal(accumulator_atomic, atomic_steps,
+        accumulator_stepped, stepped_steps);
+    auto eq_done = unroller.Equal(done_atomic, atomic_steps,
+        done_stepped, stepped_steps);
+    auto agree = eq_scratchpad && eq_accumulator && eq_done;
+
+    // ----- 5a. Non-vacuity check -----
+    std::cout << "[4a] Checking non-vacuity (expect SAT)...\n";
+    {
+        z3::solver s(c);
+        s.add(cstr_atomic);
+        s.add(cstr_stepped);
+        s.add(same_inputs);
+        s.add(agree);
+        auto r = s.check();
+        std::cout << "  Non-vacuity (exists valid execution): " << r << "\n";
+        if (r != z3::sat) {
+            std::cout << "  WARNING: No valid execution found!\n";
+        }
+    }
+
+    // ----- 5b. Equivalence check -----
+    std::cout << "[4b] Checking equivalence (expect UNSAT)...\n";
+    bool equivalent = false;
+    {
+        z3::solver s(c);
+        s.add(cstr_atomic);
+        s.add(cstr_stepped);
+        s.add(same_inputs);
+        s.add(!agree); // Negate agreement
+        auto r = s.check();
+        std::cout << "  Equivalence (no counterexample): " << r << "\n";
+        equivalent = (r == z3::unsat);
+    }
+
+    std::cout << "\n=== RESULT ===\n";
+    if (equivalent) {
+        std::cout << "✅ PASS: Atomic and stepped models are EQUIVALENT\n";
+    } else {
+        std::cout << "❌ FAIL: Atomic and stepped models are NOT equivalent\n";
+    }
+
+    return equivalent;
+}

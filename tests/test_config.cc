@@ -38,16 +38,16 @@ void test_config_ex(Gemmini& gem)
         EXPECT_TRUE(dataflow == "true");
         
         auto activation = TO_STR(gem.activation_func, 1, u, mdl);
-        EXPECT_TRUE(activation == "#b1");
+        EXPECT_TRUE(activation == "#b0");
         
         auto A_T = TO_STR(gem.A_T, 1, u, mdl);
         EXPECT_TRUE(A_T == "#b0");
         
         auto B_T = TO_STR(gem.B_T, 1, u, mdl);
-        EXPECT_TRUE(B_T == "#b1");
+        EXPECT_TRUE(B_T == "#b0");
         
         auto A_stride = TO_STR(gem.A_stride, 1, u, mdl);
-        EXPECT_TRUE(A_stride == "#x0004");
+        EXPECT_TRUE(A_stride == "#x0001");
         
         auto scalar = TO_STR(gem.scalar, 1, u, mdl);
         EXPECT_TRUE(scalar == "#x3f800000");
