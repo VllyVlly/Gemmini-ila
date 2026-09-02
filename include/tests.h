@@ -17,3 +17,6 @@ void test_compute_preload_OS_AB_transpose(gemmini::Gemmini& gem);
 void test_compute_preload_WS_A_transpose(gemmini::Gemmini& gem);
 void test_compute_preload_WS_B_transpose(gemmini::Gemmini& gem);
 void test_compute_preload_WS_AB_transpose(gemmini::Gemmini& gem);
+
+void test_compute_atomic_OS(gemmini::Gemmini& gem);
+void test_compute_atomic_WS(gemmini::Gemmini& gem);

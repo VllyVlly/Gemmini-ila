@@ -28,6 +28,7 @@ namespace gemmini {
 #define matmul_preload BvConst(6, 3)
 #define matmul_compute_preloaded BvConst(4, 3)
 #define matmul_compute_accumulated BvConst(5, 3)
+#define matmul_compute_atomic BvConst(1, 3)
 
 enum class DataType : uint64_t {
     INT8 = 8,

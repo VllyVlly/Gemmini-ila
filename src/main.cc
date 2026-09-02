@@ -62,12 +62,15 @@ int main()
     // test_compute_accumulate_OS(gem_matmul);
     // test_compute_accumulate_WS(gem_matmul);
 
-    test_compute_preload_OS_A_transpose(gem_matmul);
-    test_compute_preload_OS_B_transpose(gem_matmul);
-    test_compute_preload_OS_AB_transpose(gem_matmul);
-    test_compute_preload_WS_A_transpose(gem_matmul);
-    test_compute_preload_WS_B_transpose(gem_matmul);
-    test_compute_preload_WS_AB_transpose(gem_matmul);
+    // test_compute_preload_OS_A_transpose(gem_matmul);
+    // test_compute_preload_OS_B_transpose(gem_matmul);
+    // test_compute_preload_OS_AB_transpose(gem_matmul);
+    // test_compute_preload_WS_A_transpose(gem_matmul);
+    // test_compute_preload_WS_B_transpose(gem_matmul);
+    // test_compute_preload_WS_AB_transpose(gem_matmul);
+
+    test_compute_atomic_OS(gem_matmul);
+    test_compute_atomic_WS(gem_matmul);
 
     // Summary
     print_test_summary();

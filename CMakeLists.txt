@@ -8,5 +8,5 @@ add_subdirectory(ILAng)
 
 add_executable(test_gemmini_ila src/main.cc src/gemmini.cc src/test_helpers.cc tests/test_config.cc tests/test_mv.cc tests/test_matmul.cc)
 
-target_include_directories(main PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_link_libraries(main PRIVATE ilang::ilang)
+target_include_directories(test_gemmini_ila PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_link_libraries(test_gemmini_ila PRIVATE ilang::ilang)
