@@ -233,7 +233,5 @@ inline ExprRef ScaleBv(const ExprRef& acc_value, const ExprRef& acc_scale, unsig
 }
 
 // TODO
-// Test gap between each DRAM element - for mvin mvout
 // Do README and add better comments
-// Float multiplication
-// Refresh states once instructions finish
+// Formal verification

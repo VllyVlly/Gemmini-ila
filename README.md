@@ -93,6 +93,7 @@ This repo does not vendor or track ILAng directly — you'll need to clone it se
 - [x] Data movement instructions — `mvin`, `mvout`
 - [x] Config instructions — `config_ex`, `config_mvin`, `config_mvout`
 - [x] Core matmul sequence instructions — `matmul.preload`, `matmul.compute.preloaded`, `matmul.compute.accumulated`
+- [ ] Add support for different data types other than unsigned integer of different bit-widths
 - [ ] Model additional Gemmini instructions (e.g. loop instructions, flush)
 - [ ] End-to-end equivalence checking against RTL
 

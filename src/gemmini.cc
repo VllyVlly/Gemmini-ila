@@ -151,7 +151,7 @@ void Gemmini::AddInstructions()
                     auto elem_valid = Ite(BvConst(elem, 16) < chunk_width, SYMB_TRUE, SYMB_FALSE);
                     auto should_update = Ite(should_transfer & elem_valid, SYMB_TRUE, SYMB_FALSE);
 
-                    auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH); // multiply by bitwidth?
+                    auto dram_elem_addr = dram_base + BvConst(elem, DRAM_ADDR_WIDTH); 
                     auto load_elem = DRAM.Load(dram_elem_addr);
 
                     auto load_elem_input = Extract(load_elem, INPUT_BITS - 1, 0);
@@ -194,12 +194,6 @@ void Gemmini::AddInstructions()
                 instr.SetUpdate(done, Ite(done_after, BoolConst(true), done));
             }
 
-            // mvin end
-            // TODO make sure that config and done resets
-            {
-                InstrRef instr = m.NewInstr("mvin_end");
-                instr.SetDecode(funct == mvin & done);
-            }
         }
 
         {
@@ -268,14 +262,6 @@ void Gemmini::AddInstructions()
 
                 // If rows are all processed, stop
                 instr.SetUpdate(done, Ite(!continue_row, BoolConst(true), done));
-            }
-
-            // mvout end
-            // TODO reset states when done
-            {
-                InstrRef instr = m.NewInstr("mvout_end");
-                auto decode = mvout;
-                instr.SetDecode((funct == decode) & done);
             }
         }
     }
