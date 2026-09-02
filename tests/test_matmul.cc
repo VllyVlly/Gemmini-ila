@@ -787,6 +787,12 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
 
     // Get key states for both models
     // Atomic model states
+
+    auto rs1_atomic = atomic_ila.state("rs1");
+    auto rs2_atomic = atomic_ila.state("rs2");
+    auto rs1_stepped = stepped_ila.state("rs1");
+    auto rs2_stepped = stepped_ila.state("rs2");
+
     auto a_atomic = atomic_ila.state("A_addr");
     auto b_atomic = atomic_ila.state("B_D_addr");
     auto dest_atomic = atomic_ila.state("dest_addr");
@@ -873,12 +879,15 @@ bool verifyComputeAtomicVsStepped(const gemmini::cfg& Cfg, int atomic_steps, int
     auto same_scalar = unroller.Equal(scalar_atomic, 0, scalar_stepped, 0);
     auto same_acc_type = unroller.Equal(acc_type_atomic, 0, acc_type_stepped, 0);
 
+    auto same_rs1 = unroller.Equal(rs1_atomic, 0, rs1_stepped, 0);
+    auto same_rs2 = unroller.Equal(rs2_atomic, 0, rs2_stepped, 0);
+
     auto same_inputs = same_A && same_B && same_dest && 
                    same_A_row && same_A_col && 
                    same_BD_row && same_BD_col &&
                    same_dataflow && same_A_T && same_B_T &&
                    same_right_shift && same_activation &&
-                   same_A_stride && same_scalar && same_acc_type;
+                   same_A_stride && same_scalar && same_acc_type && same_rs1 && same_rs2;
 
     // ----- 4. Check outputs match at final step -----
     auto eq_scratchpad = unroller.Equal(scratchpad_atomic, atomic_steps,
